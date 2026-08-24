@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <RootNamespace>Screendrop.App</RootNamespace>
+    <AssemblyName>Screendrop</AssemblyName>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>Assets\screendrop.ico</ApplicationIcon>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="H.NotifyIcon.Wpf" Version="2.3.0" />
+    <PackageReference Include="SkiaSharp.Views.WPF" Version="2.88.9" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Screendrop.Core\Screendrop.Core.csproj" />
+    <ProjectReference Include="..\Screendrop.Capture\Screendrop.Capture.csproj" />
+    <ProjectReference Include="..\Screendrop.Rendering\Screendrop.Rendering.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Resource Include="Assets\screendrop.ico" />
+  </ItemGroup>
+
+</Project>
