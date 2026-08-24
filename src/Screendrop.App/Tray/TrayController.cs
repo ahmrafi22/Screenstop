@@ -39,6 +39,23 @@ internal sealed class TrayController : IDisposable
         return menu;
     }
 
+    public void Notify(string title, string message)
+    {
+        if (_icon is null)
+        {
+            return;
+        }
+
+        var dispatcher = Application.Current?.Dispatcher;
+        if (dispatcher is not null && !dispatcher.CheckAccess())
+        {
+            dispatcher.BeginInvoke(() => Notify(title, message));
+            return;
+        }
+
+        _icon.ShowNotification(title, message);
+    }
+
     public void Dispose()
     {
         _icon?.Dispose();

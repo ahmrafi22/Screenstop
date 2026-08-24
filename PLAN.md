@@ -71,6 +71,22 @@ projections automatically via `Microsoft.Windows.SDK.NET.Ref`; the standalone pa
 build targets additionally require a locally installed Windows SDK and fail on machines
 with only the .NET SDK. Same APIs, fewer moving parts.
 
+**Decision log (2026-08-24, Phase 1):**
+1. *Display capture engine:* GDI `BitBlt` is the primary (currently only) engine for
+   fullscreen display capture; WGC arrives in Phase 2 with window capture, where it is
+   actually required. Rationale: §6.1 already sanctioned BitBlt as the Win10 fallback — for
+   fullscreen stills it is pixel-exact, silent (no WGC yellow border flash), needs no OS
+   permission prompt, and matches what the mac `screencapture` CLI produces. The
+   `ICapturer`-shaped seam (`GDICapturer` today) keeps the Phase 2 swap trivial.
+2. *Test scope widened:* the xUnit project now also hosts Screendrop.Capture integration
+   tests (real monitor enumeration + real BitBlt + PNG roundtrip) alongside Core unit
+   tests; §7's "Core only" line is superseded. Still no UI tests.
+3. *Diagnostics:* `TraceLog` writes `%TEMP%\Screendrop\trace.log` (hotkey registrations,
+   WM_HOTKEY receipts, capture results/failures). Foundation for the Phase 7 crash log.
+4. *E2E automation:* `scripts/verify-hotkeys.ps1` proves registration ownership lifecycle;
+   `scripts/verify-capture-e2e.ps1` posts a synthetic `WM_HOTKEY` to the app's hidden
+   window and asserts a real display-sized PNG lands in `%TEMP%\Screendrop`.
+
 ### Why not the alternatives (decided)
 - **WinUI 3**: immature story for borderless overlay windows and tray apps.
 - **Tauri/Electron**: Screendrop is mostly custom native windows (overlays, click-through,
@@ -216,6 +232,67 @@ per milestone (repo convention carries over from mac project).
 
 ## 8. Prerequisites (this machine)
 
-- .NET 8 SDK — **not currently installed** (`dotnet` not found). Install via
-  `winget install Microsoft.DotNet.SDK.8` before Phase 0.
+- ~~.NET 8 SDK — not installed~~ **Done (2026-08-24):** installed 8.0.424 via winget.
 - Windows 10 21H2+ or Win11 (WGC requirement).
+
+---
+
+## 9. Phase Checklist
+
+Live status board. Update as phases complete; keep §5 acceptance text authoritative.
+
+### Phase 0 — Scaffold ✅ (2026-08-24)
+- [x] Solution + 4 projects + test project, NuGet refs, `PerMonitorV2` manifest
+- [x] Single-instance mutex; second launch exits silently with code 0
+- [x] Tray icon with Quit; no taskbar window
+- [x] `build.ps1`, `.gitignore`, `docs/QA.md`
+- [x] `dotnet build` green from clean clone
+
+### Phase 1 — Monitor capture + hotkeys ✅ (2026-08-24)
+- [x] Monitor enumeration in physical pixels (`MonitorEnumerator`)
+- [x] Focused-display resolution via foreground window → nearest monitor
+- [x] Display capture → temp PNG (`GDICapturer` → `%TEMP%\Screendrop\*.png`)
+- [x] Hotkeys `Alt+Shift+1/2/3` on hidden message pump (`HotkeyService`)
+- [x] Conflict toast on failed registration (tray balloon)
+- [x] Tests: geometry unit tests + capture integration tests (7/7 green)
+- [x] Automated E2E: hotkey ownership held while running / released on exit
+- [x] Automated E2E: synthetic `WM_HOTKEY` produces real display-sized PNG
+- [ ] Manual: real keypress on multi-monitor mixed-DPI setup (single-monitor machine here)
+
+### Phase 2 — Area + window selection ⬜
+- [ ] Rubber-band overlay per monitor (dimmed backdrop, crosshair, size HUD, Esc cancel)
+- [ ] Area crop pixel-exact vs drawn rect
+- [ ] Window picker with hover highlight (WindowFromPoint → hwnd → WGC item)
+- [ ] WGC engine lands here for window capture (border caveat on Win10)
+
+### Phase 3 — After-capture pipeline ⬜
+- [ ] Save-to-temp PNG wired into single fan-out point (`AfterCapturePipeline.Run`)
+- [ ] Auto-copy (CF_DIB + registered PNG format)
+- [ ] Auto-compress JPEG (quality setting)
+- [ ] Naming-pattern files (`FileNaming` port)
+- [ ] Toast with thumbnail
+
+### Phase 4 — Preview panel ⬜
+- [ ] Borderless topmost panel, stack up to N shots
+- [ ] Hover action row (save/copy/edit/discard)
+- [ ] Placement resolver (bottom-center of active screen)
+- [ ] `SetWindowDisplayAffinity(WDA_EXCLUDEFROMCAPTURE)` exclusion
+- [ ] Drag-follow across monitors; survives sleep/resume
+
+### Phase 5 — Annotation editor ⬜
+- [ ] Document model + geometry ports unit-tested (normalized coords)
+- [ ] SkiaSharp canvas with undo/redo
+- [ ] Tools in order: rect → ellipse → freehand → arrow (+heads) → text adorner →
+      numbered circles → pixelate → blur (progressive)
+- [ ] Zoom/pan stable at 4K images
+
+### Phase 6 — Export renderer + integration ⬜
+- [ ] Full-res compositing incl. pixelate & blur parity
+- [ ] Editor output wired into after-capture pipeline and history
+
+### Phase 7 — Settings, polish, packaging ⬜
+- [ ] Prefs tabs parity (General/Screenshots/Hotkeys/About)
+- [ ] Launch-at-login registry Run key
+- [ ] Crash log
+- [ ] Inno Setup installer + icon set
+- [ ] Clean install/uninstall/reinstall QA
