@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <RootNamespace>Screenstop.App</RootNamespace>
+    <AssemblyName>Screenstop</AssemblyName>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>Assets\screenstop.ico</ApplicationIcon>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="H.NotifyIcon.Wpf" Version="2.3.0" />
+    <PackageReference Include="SkiaSharp.Views.WPF" Version="2.88.9" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Screenstop.Core\Screenstop.Core.csproj" />
+    <ProjectReference Include="..\Screenstop.Capture\Screenstop.Capture.csproj" />
+    <ProjectReference Include="..\Screenstop.Rendering\Screenstop.Rendering.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Resource Include="Assets\screenstop.ico" />
+  </ItemGroup>
+
+</Project>
