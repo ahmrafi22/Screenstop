@@ -295,6 +295,7 @@ Live status board. Update as phases complete; keep §5 acceptance text authorita
 
 ### Phase 3 — After-capture pipeline 🔄 (in progress — see progress log)
 - [x] `SettingsStore` (Core): versioned JSON at `%APPDATA%\Screendrop\settings.json`, safe defaults, quality clamp, atomic save (3a)
+- [x] `FileNaming` (Core): token expansion `{timestamp}/{date}/{time}/{type}`, filename sanitization, unique-name resolution (mac `"name 1.png"` style) (3b)
 - [ ] Save-to-temp PNG wired into single fan-out point (`AfterCapturePipeline.Run`)
 - [ ] Auto-copy (CF_DIB + registered PNG format)
 - [ ] Auto-compress JPEG (quality setting)
