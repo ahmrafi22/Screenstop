@@ -125,6 +125,24 @@ with only the .NET SDK. Same APIs, fewer moving parts.
    `TrayController` downscales the capture to ≤128px, `GetHicon()`, and schedules
    `DestroyIcon` 15s later (balloon display lifetime) to avoid leaking icons.
 
+**Audit log (2026-08-25, Phases 2–3 re-review):**
+- *Off-screen capture garbage fixed.* `CaptureRect` now `PatBlt(BLACKNESS)`s the destination
+  before `SRCCOPY`, so regions outside the screen (e.g. partially off-screen windows) come
+  out black instead of uninitialized GDI garbage. (`BitBlt` with the same DC as source was
+  undefined behavior — 56% corruption in the region test; `PatBlt` has no source DC.)
+- *Minimized windows excluded from the picker.* `WindowEnumerator` skips `IsIconic`
+  windows (their `GetWindowRect` is the minimized position → bogus highlight/pick).
+- *Reentrant-capture guard.* `CaptureCoordinator` now takes an interlocked busy flag before
+  each capture and releases it in the background task's `finally`. A hotkey pressed while a
+  modal overlay (area/picker) is up is ignored + traced instead of opening a second overlay.
+- *Atomic settings save.* `SettingsStore.Save` now uses `File.Move(temp, path, overwrite)`
+  (atomic rename) instead of delete-then-move, which had a window where the settings file
+  was missing.
+- *Reserved filename guard.* `FileNaming` prefixes `CON/PRN/AUX/NUL/COM1-9/LPT1-9` with `_`
+  so pattern `"CON"` can't produce an unwritable name.
+- *Region-crop test tolerance* raised to 25% — the machine's live desktop animates between
+  the two captures; the threshold still catches systematic corruption (e.g. the 56% case).
+
 ### Why not the alternatives (decided)
 - **WinUI 3**: immature story for borderless overlay windows and tray apps.
 - **Tauri/Electron**: Screendrop is mostly custom native windows (overlays, click-through,

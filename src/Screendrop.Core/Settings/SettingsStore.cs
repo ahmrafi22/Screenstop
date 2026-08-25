@@ -55,12 +55,6 @@ public static class SettingsStore
 
         var tempPath = path + $".tmp.{Environment.ProcessId}";
         File.WriteAllText(tempPath, JsonSerializer.Serialize(settings, JsonOptions));
-
-        if (File.Exists(path))
-        {
-            File.Delete(path);
-        }
-
-        File.Move(tempPath, path);
+        File.Move(tempPath, path, overwrite: true);
     }
 }
