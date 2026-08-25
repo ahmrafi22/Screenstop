@@ -13,7 +13,7 @@ public static class PlacementResolver
             return new PixelRect(screenBounds.X, screenBounds.Y, 0, 0);
         }
 
-        int x = screenBounds.X + (screenBounds.Width - panelWidth);
+        int x = screenBounds.X + (screenBounds.Width - panelWidth) / 2;
         if (x < screenBounds.X)
         {
             x = screenBounds.X;
