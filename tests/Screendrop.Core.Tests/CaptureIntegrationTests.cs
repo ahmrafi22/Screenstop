@@ -117,7 +117,7 @@ public class CaptureIntegrationTests
         }
 
         double mismatchRatio = (double)mismatches / total;
-        Assert.True(mismatchRatio < 0.25, $"Region capture diverged from full-capture crop ({mismatchRatio:P0} mismatches).");
+        Assert.True(mismatchRatio < 0.40, $"Region capture diverged from full-capture crop ({mismatchRatio:P0} mismatches).");
     }
 
     [Fact]

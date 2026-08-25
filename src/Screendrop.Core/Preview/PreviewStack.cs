@@ -19,9 +19,9 @@ public sealed class PreviewStack
     public void Push(PreviewEntry entry)
     {
         _items.Insert(0, entry);
-        if (_items.Count >= _maxCount)
+        if (_items.Count > _maxCount)
         {
-            _items.RemoveAt(0);
+            _items.RemoveAt(_items.Count - 1);
         }
 
         Changed?.Invoke();
