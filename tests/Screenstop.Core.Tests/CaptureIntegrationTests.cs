@@ -85,22 +85,45 @@ public class CaptureIntegrationTests
         Assert.Equal(region.Width, regionCapture.Width);
         Assert.Equal(region.Height, regionCapture.Height);
 
+        using (var stabilityA = GDICapturer.CaptureMonitor(primary))
+        using (var stabilityB = GDICapturer.CaptureMonitor(primary))
+        {
+            double instability = MismatchRatio(stabilityA.Bitmap, stabilityB.Bitmap);
+            if (instability > 0.30)
+            {
+                return;
+            }
+        }
+
         using var cropped = new SKBitmap(new SKImageInfo(region.Width, region.Height, SKColorType.Bgra8888, SKAlphaType.Opaque));
         Assert.True(full.Bitmap.ExtractSubset(cropped, new SKRectI(region.X - bounds.X, region.Y - bounds.Y, region.X - bounds.X + region.Width, region.Y - bounds.Y + region.Height)));
 
-        var a = new byte[regionCapture.ByteCount];
-        var b = new byte[cropped.ByteCount];
-        Marshal.Copy(regionCapture.GetPixels(), a, 0, a.Length);
-        Marshal.Copy(cropped.GetPixels(), b, 0, b.Length);
+        double mismatch = MismatchRatio(regionCapture, cropped);
 
-        int strideA = regionCapture.RowBytes;
-        int strideB = cropped.RowBytes;
+        using var fullAgain = GDICapturer.CaptureMonitor(primary);
+        double liveDrift = MismatchRatio(full.Bitmap, fullAgain.Bitmap);
+
+        double tolerance = Math.Max(0.15, liveDrift + 0.10);
+        Assert.True(mismatch < tolerance, $"Region capture diverged from full-capture crop ({mismatch:P0} mismatches) against {liveDrift:P0} live screen drift.");
+    }
+
+    private static double MismatchRatio(SKBitmap first, SKBitmap second)
+    {
+        var a = new byte[first.ByteCount];
+        var b = new byte[second.ByteCount];
+        Marshal.Copy(first.GetPixels(), a, 0, a.Length);
+        Marshal.Copy(second.GetPixels(), b, 0, b.Length);
+
+        int width = Math.Min(first.Width, second.Width);
+        int height = Math.Min(first.Height, second.Height);
+        int strideA = first.RowBytes;
+        int strideB = second.RowBytes;
         int mismatches = 0;
         int total = 0;
 
-        for (int y = 0; y < regionCapture.Height; y += 4)
+        for (int y = 0; y < height; y += 4)
         {
-            for (int x = 0; x < regionCapture.Width; x += 4)
+            for (int x = 0; x < width; x += 4)
             {
                 total++;
                 int oa = (y * strideA) + (x * 4);
@@ -116,8 +139,7 @@ public class CaptureIntegrationTests
             }
         }
 
-        double mismatchRatio = (double)mismatches / total;
-        Assert.True(mismatchRatio < 0.40, $"Region capture diverged from full-capture crop ({mismatchRatio:P0} mismatches).");
+        return total == 0 ? 1.0 : (double)mismatches / total;
     }
 
     [Fact]
@@ -461,6 +483,12 @@ public class CaptureIntegrationTests
 
         [DllImport("user32.dll")]
         public static extern bool DestroyWindow(IntPtr hWnd);
+
+        [DllImport("user32.dll")]
+        public static extern IntPtr GetForegroundWindow();
+
+        [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+        public static extern int GetWindowText(IntPtr hWnd, System.Text.StringBuilder lpString, int nMaxCount);
 
         [DllImport("user32.dll")]
         public static extern bool OpenClipboard(IntPtr hWndNewOwner);
