@@ -293,7 +293,8 @@ Live status board. Update as phases complete; keep §5 acceptance text authorita
 - [x] Window capture engine: `WindowCapturer` (PrintWindow `PW_RENDERFULLCONTENT` primary, BitBlt fallback on blank frame) (2D)
 - [ ] WGC engine — **deferred by decision** (see §9 decision log); BitBlt/PrintWindow satisfy v1 stills
 
-### Phase 3 — After-capture pipeline ⬜
+### Phase 3 — After-capture pipeline 🔄 (in progress — see progress log)
+- [x] `SettingsStore` (Core): versioned JSON at `%APPDATA%\Screendrop\settings.json`, safe defaults, quality clamp, atomic save (3a)
 - [ ] Save-to-temp PNG wired into single fan-out point (`AfterCapturePipeline.Run`)
 - [ ] Auto-copy (CF_DIB + registered PNG format)
 - [ ] Auto-compress JPEG (quality setting)
