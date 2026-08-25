@@ -25,6 +25,11 @@ public static class WindowEnumerator
                 return true;
             }
 
+            if (NativeMethods.IsIconic(hwnd))
+            {
+                return true;
+            }
+
             uint ownerPid;
             NativeMethods.GetWindowThreadProcessId(hwnd, out ownerPid);
             if (ownerPid == (uint)excludeProcessId)
