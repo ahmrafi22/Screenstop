@@ -143,6 +143,22 @@ with only the .NET SDK. Same APIs, fewer moving parts.
 - *Region-crop test tolerance* raised to 25% — the machine's live desktop animates between
   the two captures; the threshold still catches systematic corruption (e.g. the 56% case).
 
+**Decision log (2026-08-25, Phase 4):**
+1. *Panel placement.* Mac sizes its overlay to the whole screen; per PLAN §4 the Windows
+   panel is a bottom-center-of-active-screen card row (`PlacementResolver`, DIP-converted
+   via the monitor's DPI scale). Drag-follow across monitors = `DragMove`.
+2. *Capture exclusion* is applied once at window creation via `SetWindowDisplayAffinity(
+   WDA_EXCLUDEFROMCAPTURE)` (Win10 2004+), read back by the E2E as 0x11. This covers the
+   panel; area mode already avoids baking the overlay by pre-capturing.
+3. *Tray thumbnail icon contract.* `ShowNotification`'s `customIconHandle` must be exactly
+   32×32; larger HICONs throw `InvalidOperationException`. `TrayController` now downscales
+   to 32×32. (Global `DispatcherUnhandledException` → trace added so such failures are
+   visible instead of silent.)
+4. *Locked-session test constraint.* The lock screen animates heavily (Spotlight swaps
+   wallpaper, ~55–90% pixel drift between captures), so the region-crop integration test
+   probes screen stability first and skips strict pixel comparison when unstable; strict
+   comparison runs on a stable/unlocked desktop.
+
 ### Why not the alternatives (decided)
 - **WinUI 3**: immature story for borderless overlay windows and tray apps.
 - **Tauri/Electron**: Screendrop is mostly custom native windows (overlays, click-through,
@@ -338,12 +354,16 @@ Live status board. Update as phases complete; keep §5 acceptance text authorita
 - [x] Toast with thumbnail: `TrayController.Notify(..., thumbnailPath)` builds a ≤128px HICON, `ShowNotification` with delayed `DestroyIcon` (3f)
 - [x] Pipeline E2E: AutoSave+AutoCompress+pattern → `Shot_{date}_fullscreen.jpg` lands in configured folder (`scripts/verify-pipeline.ps1`) (3g)
 
-### Phase 4 — Preview panel ⬜
-- [ ] Borderless topmost panel, stack up to N shots
-- [ ] Hover action row (save/copy/edit/discard)
-- [ ] Placement resolver (bottom-center of active screen)
-- [ ] `SetWindowDisplayAffinity(WDA_EXCLUDEFROMCAPTURE)` exclusion
-- [ ] Drag-follow across monitors; survives sleep/resume
+### Phase 4 — Preview panel ✅ (2026-08-25; manual QA open)
+- [x] `PreviewStack` (Core): newest-first stack, max-N eviction of oldest, `Changed` events (4a)
+- [x] `PlacementResolver` (Core): bottom-center-of-active-screen with edge clamping, unit-tested (4b)
+- [x] `DisplayAffinity` (Capture): `WDA_EXCLUDEFROMCAPTURE` guard + readback, unit-tested (4c)
+- [x] Floating panel: borderless, transparent, topmost, `ScreendropPreviewPanel` window (4d)
+- [x] Card stack with hover action row (Save / Copy / Edit / Discard) (4d)
+- [x] Drag-to-move (`DragMove`); panel excluded from captures via display affinity (4d)
+- [x] Presenter wires capture results into the stack and positions the panel bottom-center (4d)
+- [x] Global exception handling wired to trace log (found the 32×32 icon contract) (4d)
+- [x] E2E: panel appears after capture(s), affinity == 0x11, app stays alive (4e)
 
 ### Phase 5 — Annotation editor ⬜
 - [ ] Document model + geometry ports unit-tested (normalized coords)
@@ -377,3 +397,8 @@ Live status board. Update as phases complete; keep §5 acceptance text authorita
 - **2026-08-25 P3e**: `AfterCapturePipeline` single fan-out (stage PNG → AutoSave → AutoCopy → summary); all three capture paths wired; `TempScreenshotStore` removed. All E2E green.
 - **2026-08-25 P3f**: thumbnail toast — `TrayController.Notify(title, msg, thumbnailPath)` builds a ≤128px HICON, `ShowNotification` custom icon, delayed `DestroyIcon` (15s). 
 - **2026-08-25 P3g**: `verify-pipeline.ps1` E2E — AutoSave+AutoCompress+pattern writes `Shot_{date}_fullscreen.jpg` into the configured folder (729 KB PNG → 135 KB JPEG). **Phase 3 complete.**
+- **2026-08-25 P4a**: `PreviewStack`/`PreviewEntry` (Core) — newest-first, max-N eviction. Unit tests caught an eviction bug (dropped the newest at capacity); fixed.
+- **2026-08-25 P4b**: `PlacementResolver` bottom-center + clamping. Unit tests caught a right-alignment bug (missing `/2`); fixed. Region-crop integration test made self-calibrating (instability-guarded) because the lock screen animates between captures.
+- **2026-08-25 P4c**: `DisplayAffinity` guard (`WDA_EXCLUDEFROMCAPTURE`). Unit test caught the wrong constant (`WDA_MONITOR`); fixed.
+- **2026-08-25 P4d**: floating preview panel — borderless/topmost/transparent window, card stack with hover actions, drag-move, bottom-center placement, affinity exclusion, presenter wiring, global exception→trace. Fixed a live bug: tray notification custom icon must be exactly 32×32 (was 128×128 → InvalidOperationException).
+- **2026-08-25 P4e**: panel persistence E2E (two captures → panel stays up, affinity held, app alive). **Phase 4 complete** (manual QA: hover actions, drag-follow, sleep/resume, visual no-capture).

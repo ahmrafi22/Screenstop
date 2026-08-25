@@ -2,6 +2,28 @@
 
 Manual verification per phase (see PLAN.md §5 and §7). Check items off as verified.
 
+## Phase 4 — Preview panel ✅ (automated) / manual items open
+
+Automated (all green):
+
+- [x] `PreviewStack` eviction tests (max-N keeps newest, drops oldest)
+- [x] `PlacementResolver` centered + clamped placement tests
+- [x] `DisplayAffinity` sets `WDA_EXCLUDEFROMCAPTURE` (0x11) — read back and asserted
+- [x] Panel E2E: capture(s) → `ScreendropPreviewPanel` appears, affinity held, app alive
+- [x] Region-crop test is stability-guarded (skips strict compare on the animating lock screen)
+- [x] Regression: 50/50 xUnit + all 6 E2E scripts green
+
+Manual:
+
+- [ ] After a capture the panel appears bottom-center of the active display
+- [ ] Hover a card → Save/Copy/Edit/Discard buttons appear; they behave (Save writes to
+      export dir, Copy puts image on clipboard, Edit shows the Phase-5 notice, Discard
+      removes the card and deletes the file)
+- [ ] Drag the panel anywhere (across monitors) and it stays put
+- [ ] The panel never appears in subsequent screenshots (visual check on unlocked desktop)
+- [ ] Panel survives sleep/resume and shows the stack correctly
+- [ ] 7+ captures: only the newest 6 cards remain
+
 ## Audit — Phases 2–3 re-review (2026-08-25)
 
 - [x] Region capture never returns garbage for off-screen edges (PatBlt black fill)
