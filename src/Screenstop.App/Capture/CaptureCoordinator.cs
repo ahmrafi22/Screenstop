@@ -12,7 +12,7 @@ namespace Screenstop.App.Capture;
 
 internal sealed class CaptureCoordinator
 {
-    public delegate void NotifyHandler(string title, string message);
+    public delegate void NotifyHandler(string title, string message, string? thumbnailPath = null);
 
     private readonly NotifyHandler _notify;
 
@@ -65,7 +65,7 @@ internal sealed class CaptureCoordinator
                 using var bitmap = WindowCapturer.CaptureWindow(picked);
                 var result = AfterCapturePipeline.Run(bitmap, "window");
                 TraceLog.Write($"pipeline window: {result.DisplaySummary}");
-                NotifyUi("Screenshot captured", result.DisplaySummary);
+                NotifyUi("Screenshot captured", result.DisplaySummary, result.ThumbnailPath);
             }
             catch (Exception ex)
             {
@@ -127,7 +127,7 @@ internal sealed class CaptureCoordinator
 
                     var result = AfterCapturePipeline.Run(crop, "area");
                     TraceLog.Write($"pipeline area: {result.DisplaySummary}");
-                    NotifyUi("Screenshot captured", result.DisplaySummary);
+                    NotifyUi("Screenshot captured", result.DisplaySummary, result.ThumbnailPath);
                 });
             }
             catch (Exception ex)
@@ -155,7 +155,7 @@ internal sealed class CaptureCoordinator
                 using var capture = GDICapturer.CaptureMonitor(monitor);
                 var result = AfterCapturePipeline.Run(capture.Bitmap, "fullscreen");
                 Infrastructure.TraceLog.Write($"pipeline fullscreen: {result.DisplaySummary}");
-                NotifyUi("Screenshot captured", result.DisplaySummary);
+                NotifyUi("Screenshot captured", result.DisplaySummary, result.ThumbnailPath);
             }
             catch (Exception ex)
             {
@@ -165,7 +165,7 @@ internal sealed class CaptureCoordinator
         });
     }
 
-    private void NotifyUi(string title, string message)
+    private void NotifyUi(string title, string message, string? thumbnailPath = null)
     {
         var dispatcher = Application.Current?.Dispatcher;
         if (dispatcher is null)
@@ -173,6 +173,6 @@ internal sealed class CaptureCoordinator
             return;
         }
 
-        dispatcher.BeginInvoke(DispatcherPriority.Normal, () => _notify(title, message));
+        dispatcher.BeginInvoke(DispatcherPriority.Normal, () => _notify(title, message, thumbnailPath));
     }
 }
