@@ -212,6 +212,183 @@ public class CaptureIntegrationTests
         }
     }
 
+    [Fact]
+    public void Clipboard_image_is_written_as_dib_and_png()
+    {
+        if (!User32.OpenClipboard(IntPtr.Zero))
+        {
+            return;
+        }
+
+        User32.CloseClipboard();
+        const int width = 64;
+        const int height = 48;
+
+        var bitmap = new SKBitmap(new SKImageInfo(width, height, SKColorType.Bgra8888, SKAlphaType.Opaque));
+        var pixels = new byte[bitmap.ByteCount];
+        for (int y = 0; y < height; y++)
+        {
+            for (int x = 0; x < width; x++)
+            {
+                int o = (y * bitmap.RowBytes) + (x * 4);
+                pixels[o] = (byte)(x * 4);
+                pixels[o + 1] = (byte)(y * 4);
+                pixels[o + 2] = 200;
+                pixels[o + 3] = 255;
+            }
+        }
+
+        Marshal.Copy(pixels, 0, bitmap.GetPixels(), pixels.Length);
+
+        try
+        {
+            ClipboardService.SetImage(bitmap);
+        }
+        finally
+        {
+            bitmap.Dispose();
+        }
+
+        using (var clip = ClipboardReadback.Open())
+        {
+            var dibBytes = clip.GetDib();
+            Assert.NotNull(dibBytes);
+            Assert.True(dibBytes!.Length >= 40 + (width * height * 4));
+            Assert.Equal(40, BitConverter.ToInt32(dibBytes, 0));
+            Assert.Equal(width, BitConverter.ToInt32(dibBytes, 4));
+            Assert.Equal(height, BitConverter.ToInt32(dibBytes, 8));
+            Assert.Equal(32, BitConverter.ToUInt16(dibBytes, 14));
+
+            int rowBytes = width * 4;
+            int sampleX = 30;
+            int sampleY = 20;
+            int dibRow = (height - 1 - sampleY) * rowBytes;
+            int o = 40 + dibRow + (sampleX * 4);
+            Assert.Equal((byte)(sampleX * 4), dibBytes[o]);
+            Assert.Equal((byte)(sampleY * 4), dibBytes[o + 1]);
+
+            var pngBytes = clip.GetPng();
+            Assert.NotNull(pngBytes);
+            Assert.True(pngBytes!.Length > 0);
+
+            using var decoded = SKBitmap.Decode(pngBytes);
+            Assert.NotNull(decoded);
+            Assert.Equal(width, decoded!.Width);
+            Assert.Equal(height, decoded.Height);
+        }
+    }
+
+    [Fact]
+    public void Dib_builder_produces_valid_header_and_bottom_up_pixel_layout()
+    {
+        const int width = 32;
+        const int height = 24;
+
+        var bitmap = new SKBitmap(new SKImageInfo(width, height, SKColorType.Bgra8888, SKAlphaType.Opaque));
+        var pixels = new byte[bitmap.ByteCount];
+        for (int y = 0; y < height; y++)
+        {
+            for (int x = 0; x < width; x++)
+            {
+                int o = (y * bitmap.RowBytes) + (x * 4);
+                pixels[o] = (byte)(x * 3);
+                pixels[o + 1] = (byte)(y * 3);
+                pixels[o + 2] = 180;
+                pixels[o + 3] = 255;
+            }
+        }
+
+        Marshal.Copy(pixels, 0, bitmap.GetPixels(), pixels.Length);
+
+        var dib = ClipboardService.BuildDib(bitmap);
+        bitmap.Dispose();
+
+        Assert.Equal(40, BitConverter.ToInt32(dib, 0));
+        Assert.Equal(width, BitConverter.ToInt32(dib, 4));
+        Assert.Equal(height, BitConverter.ToInt32(dib, 8));
+        Assert.Equal(1, BitConverter.ToUInt16(dib, 12));
+        Assert.Equal(32, BitConverter.ToUInt16(dib, 14));
+        Assert.Equal(40 + (width * height * 4), dib.Length);
+
+        int rowBytes = width * 4;
+        int sampleX = 14;
+        int sampleY = 9;
+        int dibRow = (height - 1 - sampleY) * rowBytes;
+        int offset = 40 + dibRow + (sampleX * 4);
+
+        Assert.Equal((byte)(sampleX * 3), dib[offset]);
+        Assert.Equal((byte)(sampleY * 3), dib[offset + 1]);
+        Assert.Equal((byte)180, dib[offset + 2]);
+        Assert.Equal((byte)255, dib[offset + 3]);
+    }
+
+    private sealed class ClipboardReadback : IDisposable
+    {
+        private ClipboardReadback()
+        {
+        }
+
+        public static ClipboardReadback Open()
+        {
+            Exception? last = null;
+            for (int attempt = 0; attempt < 20; attempt++)
+            {
+                if (User32.OpenClipboard(IntPtr.Zero))
+                {
+                    return new ClipboardReadback();
+                }
+
+                last = new InvalidOperationException("OpenClipboard failed.");
+                Thread.Sleep(50);
+            }
+
+            throw last ?? new InvalidOperationException("OpenClipboard failed.");
+        }
+
+        public byte[]? GetDib()
+        {
+            return ReadData(8u);
+        }
+
+        public byte[]? GetPng()
+        {
+            uint format = User32.RegisterClipboardFormat("PNG");
+            return ReadData(format);
+        }
+
+        private byte[]? ReadData(uint format)
+        {
+            IntPtr handle = User32.GetClipboardData(format);
+            if (handle == IntPtr.Zero)
+            {
+                return null;
+            }
+
+            IntPtr ptr = User32.GlobalLock(handle);
+            if (ptr == IntPtr.Zero)
+            {
+                return null;
+            }
+
+            try
+            {
+                UIntPtr size = User32.GlobalSize(handle);
+                var bytes = new byte[(int)size.ToUInt64()];
+                Marshal.Copy(ptr, bytes, 0, bytes.Length);
+                return bytes;
+            }
+            finally
+            {
+                User32.GlobalUnlock(handle);
+            }
+        }
+
+        public void Dispose()
+        {
+            User32.CloseClipboard();
+        }
+    }
+
     private static IntPtr CreateTestWindow(string title)
     {
         const int WsOverlapped = 0x00000000;
@@ -258,6 +435,27 @@ public class CaptureIntegrationTests
 
         [DllImport("user32.dll")]
         public static extern bool DestroyWindow(IntPtr hWnd);
+
+        [DllImport("user32.dll")]
+        public static extern bool OpenClipboard(IntPtr hWndNewOwner);
+
+        [DllImport("user32.dll")]
+        public static extern bool CloseClipboard();
+
+        [DllImport("user32.dll")]
+        public static extern IntPtr GetClipboardData(uint uFormat);
+
+        [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+        public static extern uint RegisterClipboardFormat(string lpszFormat);
+
+        [DllImport("kernel32.dll")]
+        public static extern IntPtr GlobalLock(IntPtr hMem);
+
+        [DllImport("kernel32.dll")]
+        public static extern bool GlobalUnlock(IntPtr hMem);
+
+        [DllImport("kernel32.dll")]
+        public static extern UIntPtr GlobalSize(IntPtr hMem);
     }
 
     [StructLayout(LayoutKind.Sequential)]
