@@ -297,12 +297,14 @@ Live status board. Update as phases complete; keep §5 acceptance text authorita
 - [x] `SettingsStore` (Core): versioned JSON at `%APPDATA%\Screendrop\settings.json`, safe defaults, quality clamp, atomic save (3a)
 - [x] `FileNaming` (Core): token expansion `{timestamp}/{date}/{time}/{type}`, filename sanitization, unique-name resolution (mac `"name 1.png"` style) (3b)
 - [ ] Save-to-temp PNG wired into single fan-out point (`AfterCapturePipeline.Run`)
+- [x] `AfterCapturePipeline.Run` — single fan-out: always stage PNG to `%TEMP%\Screendrop`, then AutoSave (PNG/JPEG per AutoCompress) + AutoCopy, returns toast summary (3e)
+- [x] All three capture paths (fullscreen/window/area) route through the pipeline (3e)
 - [x] `ClipboardService` (Capture): writes both `CF_DIB` and registered `PNG` formats, bottom-up DIB builder (3c)
-- [ ] Auto-copy (CF_DIB + registered PNG format)
+- [x] Auto-copy wired: `AutoCopy` toggle → `ClipboardService.SetImage` in pipeline (3e)
 - [x] `JpegCompressor` (Rendering): SkiaSharp JPEG encode with quality clamp, PNG helper (3d)
-- [ ] Auto-compress JPEG (quality setting)
-- [ ] Naming-pattern files (`FileNaming` port)
-- [ ] Toast with thumbnail
+- [x] Auto-compress wired: `AutoCompress` + `CompressionQuality` → JPEG saves with `↓N%` summary (3e)
+- [x] Naming-pattern files: `FileNamePattern` tokens + unique resolution used for AutoSave (3b/3e)
+- [x] Toast with thumbnail: `TrayController.Notify(..., thumbnailPath)` builds a ≤128px HICON from the capture, passes it to `ShowNotification` with delayed `DestroyIcon` (3f)
 
 ### Phase 4 — Preview panel ⬜
 - [ ] Borderless topmost panel, stack up to N shots

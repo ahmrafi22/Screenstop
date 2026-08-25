@@ -90,6 +90,8 @@ internal static class AfterCapturePipeline
 
 internal sealed record AfterCaptureResult(string StagingPath, string? SavedPath, bool Copied, string? CompressedSummary)
 {
+    public string ThumbnailPath => SavedPath ?? StagingPath;
+
     public string DisplaySummary
     {
         get
