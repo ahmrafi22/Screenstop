@@ -54,8 +54,12 @@ internal static class NativeMethods
     internal const uint DIB_RGB_COLORS = 0;
     internal const int LOGPIXELSX = 88;
     internal const int LOGPIXELSY = 90;
+    internal const int GWL_EXSTYLE = -20;
+    internal const long WS_EX_TOOLWINDOW = 0x00000080;
 
     internal delegate bool MonitorEnumProc(IntPtr hMonitor, IntPtr hdcMonitor, ref RECT lprcMonitor, IntPtr dwData);
+
+    internal delegate bool WindowEnumProc(IntPtr hwnd, IntPtr lParam);
 
     [DllImport("user32.dll")]
     internal static extern bool EnumDisplayMonitors(IntPtr hdc, IntPtr lprcClip, MonitorEnumProc lpfnEnum, IntPtr dwData);
@@ -101,4 +105,39 @@ internal static class NativeMethods
 
     [DllImport("gdi32.dll")]
     internal static extern int GetDeviceCaps(IntPtr hdc, int nIndex);
+
+    [DllImport("user32.dll")]
+    internal static extern bool EnumWindows(WindowEnumProc lpEnumFunc, IntPtr lParam);
+
+    [DllImport("user32.dll")]
+    internal static extern bool IsWindowVisible(IntPtr hWnd);
+
+    [DllImport("user32.dll")]
+    internal static extern int GetWindowLong(IntPtr hWnd, int nIndex);
+
+    [DllImport("user32.dll")]
+    internal static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
+
+    [DllImport("user32.dll")]
+    internal static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    internal static extern int GetWindowTextW(IntPtr hWnd, [Out] System.Text.StringBuilder lpString, int nMaxCount);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    internal static extern int GetClassNameW(IntPtr hWnd, [Out] System.Text.StringBuilder lpClassName, int nMaxCount);
+
+    internal static string GetWindowTitle(IntPtr hwnd)
+    {
+        var sb = new System.Text.StringBuilder(256);
+        GetWindowTextW(hwnd, sb, sb.Capacity);
+        return sb.ToString();
+    }
+
+    internal static string GetWindowClassName(IntPtr hwnd)
+    {
+        var sb = new System.Text.StringBuilder(256);
+        GetClassNameW(hwnd, sb, sb.Capacity);
+        return sb.ToString();
+    }
 }
