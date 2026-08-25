@@ -1,5 +1,3 @@
-using System.IO;
-using System.Threading;
 using System.Windows;
 using System.Windows.Threading;
 using Screendrop.App.AreaSelect;
@@ -64,10 +62,10 @@ internal sealed class CaptureCoordinator
 
                 TraceLog.Write($"picked {picked.Title} {picked.Bounds}");
 
-                    using var bitmap = WindowCapturer.CaptureWindow(picked);
-                    string path = TempScreenshotStore.SavePng(bitmap);
-                TraceLog.Write($"saved window {path} ({bitmap.Width}x{bitmap.Height})");
-                NotifyUi("Screenshot captured", Path.GetFileName(path));
+                using var bitmap = WindowCapturer.CaptureWindow(picked);
+                var result = AfterCapturePipeline.Run(bitmap, "window");
+                TraceLog.Write($"pipeline window: {result.DisplaySummary}");
+                NotifyUi("Screenshot captured", result.DisplaySummary);
             }
             catch (Exception ex)
             {
@@ -127,9 +125,9 @@ internal sealed class CaptureCoordinator
                         return;
                     }
 
-                    string path = TempScreenshotStore.SavePng(crop);
-                    TraceLog.Write($"saved area {path} ({crop.Width}x{crop.Height})");
-                    NotifyUi("Screenshot captured", Path.GetFileName(path));
+                    var result = AfterCapturePipeline.Run(crop, "area");
+                    TraceLog.Write($"pipeline area: {result.DisplaySummary}");
+                    NotifyUi("Screenshot captured", result.DisplaySummary);
                 });
             }
             catch (Exception ex)
@@ -155,9 +153,9 @@ internal sealed class CaptureCoordinator
                 }
 
                 using var capture = GDICapturer.CaptureMonitor(monitor);
-                string path = TempScreenshotStore.SavePng(capture.Bitmap);
-                Infrastructure.TraceLog.Write($"saved {path} ({capture.Bitmap.Width}x{capture.Bitmap.Height})");
-                NotifyUi("Screenshot captured", Path.GetFileName(path));
+                var result = AfterCapturePipeline.Run(capture.Bitmap, "fullscreen");
+                Infrastructure.TraceLog.Write($"pipeline fullscreen: {result.DisplaySummary}");
+                NotifyUi("Screenshot captured", result.DisplaySummary);
             }
             catch (Exception ex)
             {
