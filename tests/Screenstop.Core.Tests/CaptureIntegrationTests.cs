@@ -68,7 +68,7 @@ public class CaptureIntegrationTests
     }
 
     [Fact]
-    public void Region_capture_is_pixel_exact_match_of_full_capture_crop()
+    public void Region_capture_matches_full_capture_crop()
     {
         var primary = PrimaryMonitor();
         var bounds = primary.PhysicalBounds;
@@ -118,6 +118,24 @@ public class CaptureIntegrationTests
 
         double mismatchRatio = (double)mismatches / total;
         Assert.True(mismatchRatio < 0.05, $"Region capture diverged from full-capture crop ({mismatchRatio:P0} mismatches).");
+    }
+
+    [Fact]
+    public void Monitor_dpi_scale_is_reported_and_roundtrips()
+    {
+        var primary = PrimaryMonitor();
+        var (scaleX, scaleY) = MonitorGeometry.GetScale(primary);
+
+        Assert.InRange(scaleX, 0.75, 4.0);
+        Assert.InRange(scaleY, 0.75, 4.0);
+
+        var dip = new PixelRect(100, 100, 500, 300);
+        var physical = MonitorGeometry.DipToPhysical(primary, scaleX, scaleY, dip.X, dip.Y, dip.Width, dip.Height);
+
+        Assert.Equal((int)Math.Round(100 * scaleX) + primary.PhysicalBounds.X, physical.X);
+        Assert.Equal((int)Math.Round(100 * scaleY) + primary.PhysicalBounds.Y, physical.Y);
+        Assert.Equal((int)Math.Round(500 * scaleX), physical.Width);
+        Assert.Equal((int)Math.Round(300 * scaleY), physical.Height);
     }
 
     [Fact]

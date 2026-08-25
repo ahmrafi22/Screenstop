@@ -52,6 +52,8 @@ internal static class NativeMethods
     internal const uint SRCCOPY = 0x00CC0020;
     internal const uint CAPTUREBLT = 0x40000000;
     internal const uint DIB_RGB_COLORS = 0;
+    internal const int LOGPIXELSX = 88;
+    internal const int LOGPIXELSY = 90;
 
     internal delegate bool MonitorEnumProc(IntPtr hMonitor, IntPtr hdcMonitor, ref RECT lprcMonitor, IntPtr dwData);
 
@@ -93,4 +95,10 @@ internal static class NativeMethods
 
     [DllImport("gdi32.dll")]
     internal static extern int GetDIBits(IntPtr hdc, IntPtr hbm, uint start, uint cLines, [Out] byte[]? lpvBits, ref BITMAPINFO lpbmi, uint usage);
+
+    [DllImport("gdi32.dll", CharSet = CharSet.Unicode)]
+    internal static extern IntPtr CreateDC(string? lpszDriver, string? lpszDevice, string? lpszOutput, IntPtr lpInitData);
+
+    [DllImport("gdi32.dll")]
+    internal static extern int GetDeviceCaps(IntPtr hdc, int nIndex);
 }
