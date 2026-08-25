@@ -365,6 +365,17 @@ Live status board. Update as phases complete; keep §5 acceptance text authorita
 - [x] Global exception handling wired to trace log (found the 32×32 icon contract) (4d)
 - [x] E2E: panel appears after capture(s), affinity == 0x11, app stays alive (4e)
 
+**Known gaps (Phase 4) — follow-ups, not yet closed:**
+- [ ] **Discard leaves orphaned temp files** — removing a card does not delete the staged
+      `.png` in `%TEMP%\Screendrop` (mac deletes it). Fix: `Discard` deletes the staging file.
+- [ ] **Edit is a placeholder** — card Edit only notifies "arrives with Phase 5". Wire to the
+      annotation editor once Phase 5 lands.
+- [ ] **Copy-from-panel untested** — clipboard is unavailable on the locked session, so the
+      panel Copy path is code-reviewed only; needs an unlocked-desktop E2E.
+- [ ] **Placement uses focused monitor** — on multi-monitor the panel positions on the
+      *focused* display, which can differ from the actual capture target. Fix: pass the
+      capture's monitor through `OnCapture` and place on it.
+
 ### Phase 5 — Annotation editor ⬜
 - [ ] Document model + geometry ports unit-tested (normalized coords)
 - [ ] SkiaSharp canvas with undo/redo
