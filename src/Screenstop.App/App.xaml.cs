@@ -1,8 +1,11 @@
 using System.Linq;
 using System.Threading;
 using System.Windows;
+using System.Windows.Threading;
 using Screenstop.App.Capture;
 using Screenstop.App.Hotkeys;
+using Screenstop.App.Infrastructure;
+using Screenstop.App.Preview;
 using Screenstop.App.Tray;
 
 namespace Screenstop.App;
@@ -15,9 +18,14 @@ public partial class App : Application
     private TrayController? _tray;
     private HotkeyService? _hotkeys;
     private CaptureCoordinator? _coordinator;
+    private PreviewPanelPresenter? _preview;
 
     protected override void OnStartup(StartupEventArgs e)
     {
+        DispatcherUnhandledException += OnDispatcherUnhandledException;
+        AppDomain.CurrentDomain.UnhandledException += (_, args) =>
+            TraceLog.Write($"unhandled appdomain exception: {args.ExceptionObject}");
+
         _mutex = new Mutex(initiallyOwned: true, SingleInstanceMutexName, out var createdNew);
         if (!createdNew)
         {
@@ -30,7 +38,8 @@ public partial class App : Application
         _tray = new TrayController();
         _tray.Initialize();
 
-        _coordinator = new CaptureCoordinator(_tray.Notify);
+        _preview = new PreviewPanelPresenter(_tray.Notify);
+        _coordinator = new CaptureCoordinator(_tray.Notify, _preview.OnCapture);
         _hotkeys = HotkeyService.Start(out var conflicts);
         _hotkeys.HotkeyPressed += _coordinator.HandleHotkey;
 
@@ -56,6 +65,9 @@ public partial class App : Application
 
         _coordinator = null;
 
+        _preview?.Shutdown();
+        _preview = null;
+
         _tray?.Dispose();
         _tray = null;
 
@@ -71,5 +83,11 @@ public partial class App : Application
         _mutex = null;
 
         base.OnExit(e);
+    }
+
+    private void OnDispatcherUnhandledException(object sender, DispatcherUnhandledExceptionEventArgs e)
+    {
+        TraceLog.Write($"unhandled ui exception: {e.Exception}");
+        e.Handled = true;
     }
 }

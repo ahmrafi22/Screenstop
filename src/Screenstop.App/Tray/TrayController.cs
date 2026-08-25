@@ -13,7 +13,7 @@ namespace Screenstop.App.Tray;
 internal sealed class TrayController : IDisposable
 {
     private const string IconUri = "pack://application:,,,/Assets/screenstop.ico";
-    private const int ThumbnailMaxDimension = 128;
+    private const int ThumbnailMaxDimension = 32;
     private static readonly TimeSpan IconRetention = TimeSpan.FromSeconds(15);
 
     private TaskbarIcon? _icon;
