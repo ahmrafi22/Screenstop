@@ -11,7 +11,31 @@ Manual verification per phase (see PLAN.md §5 and §7). Check items off as veri
 - [x] Launching a second instance exits silently (exit code 0)
 - [x] No taskbar button / main window appears (EnumWindows audit: tray + hidden pump only)
 
-## Phase 2 — Area + window selection 🔄
+## Phase 3 — After-capture pipeline ✅ (automated) / manual items open
+
+Automated (all green):
+
+- [x] Settings roundtrip + safe defaults + quality clamp + corrupt-file fallback (xUnit)
+- [x] FileNaming tokens/sanitization/uniqueness (xUnit)
+- [x] DIB builder header + bottom-up pixel layout (xUnit)
+- [x] JPEG encode quality ladder + clamp + PNG roundtrip (xUnit)
+- [x] Pipeline E2E: AutoSave+AutoCompress+pattern → `Shot_{date}_fullscreen.jpg` in
+      configured folder, staged PNG in temp (scripts/verify-pipeline.ps1)
+- [x] Regression: fullscreen/hotkeys/area/picker E2E all green with pipeline in place
+- [ ] Live clipboard test (self-skips while session locked; runs on unlocked desktop)
+
+Manual:
+
+- [ ] Defaults: capture → PNG staged in `%TEMP%\Screendrop`, toast shows size
+- [ ] Toggle AutoSave → PNG appears in `Pictures\Screendrop`
+- [ ] Toggle AutoCompress → saved files become `.jpg` at the configured quality,
+      toast shows `↓N%`
+- [ ] Custom `FileNamePattern` → exported filenames follow tokens; collisions get
+      ` 1`, ` 2` suffixes
+- [ ] Toggle AutoCopy → paste into an editor yields the image (PNG/DIB fidelity)
+- [ ] Toast shows a thumbnail of the capture
+
+## Phase 2 — Area + window selection ✅ (automated) / manual items open
 
 Automated (all green):
 

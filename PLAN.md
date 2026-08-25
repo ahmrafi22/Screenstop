@@ -109,6 +109,22 @@ with only the .NET SDK. Same APIs, fewer moving parts.
 4. *Session-lock resilience:* all Phase 2 capture paths (BitBlt, PrintWindow, region crop)
    verified working while the session is locked.
 
+**Decision log (2026-08-25, Phase 3):**
+1. *Export format derived from AutoCompress.* Mac's `exportFormat` falls back to JPEG when
+   auto-compress is on; Windows mirrors that: AutoSave writes `.png` unless AutoCompress is
+   on, then `.jpg` at `CompressionQuality`. Clipboard is always PNG+DIB (max fidelity for
+   paste targets) regardless of the compress toggle.
+2. *Settings UI deferred to Phase 7.* Toggles live in `settings.json` now; per-toggle
+   behavior is verified by `verify-pipeline.ps1` and the xUnit suite. The Settings window
+   (Phase 7) will edit the same store.
+3. *Clipboard unavailable on this locked session.* `OpenClipboard` persistently fails while
+   the workstation is locked; `ClipboardService.SetImage` retries then surfaces a trace
+   line, and the pipeline still completes (copy is best-effort). DIB/PNG construction is
+   covered by pure unit tests; the live clipboard test self-skips when it can't open.
+4. *Thumbnail toast via HICON.* `ShowNotification`'s `customIconHandle` takes an HICON, so
+   `TrayController` downscales the capture to ≤128px, `GetHicon()`, and schedules
+   `DestroyIcon` 15s later (balloon display lifetime) to avoid leaking icons.
+
 ### Why not the alternatives (decided)
 - **WinUI 3**: immature story for borderless overlay windows and tray apps.
 - **Tauri/Electron**: Screendrop is mostly custom native windows (overlays, click-through,
@@ -293,18 +309,16 @@ Live status board. Update as phases complete; keep §5 acceptance text authorita
 - [x] Window capture engine: `WindowCapturer` (PrintWindow `PW_RENDERFULLCONTENT` primary, BitBlt fallback on blank frame) (2D)
 - [ ] WGC engine — **deferred by decision** (see §9 decision log); BitBlt/PrintWindow satisfy v1 stills
 
-### Phase 3 — After-capture pipeline 🔄 (in progress — see progress log)
+### Phase 3 — After-capture pipeline ✅ (2026-08-25; see decision log)
 - [x] `SettingsStore` (Core): versioned JSON at `%APPDATA%\Screendrop\settings.json`, safe defaults, quality clamp, atomic save (3a)
 - [x] `FileNaming` (Core): token expansion `{timestamp}/{date}/{time}/{type}`, filename sanitization, unique-name resolution (mac `"name 1.png"` style) (3b)
-- [ ] Save-to-temp PNG wired into single fan-out point (`AfterCapturePipeline.Run`)
+- [x] `ClipboardService` (Capture): writes both `CF_DIB` and registered `PNG` formats, bottom-up DIB builder (3c)
+- [x] `JpegCompressor` (Rendering): SkiaSharp JPEG encode with quality clamp, PNG helper (3d)
 - [x] `AfterCapturePipeline.Run` — single fan-out: always stage PNG to `%TEMP%\Screendrop`, then AutoSave (PNG/JPEG per AutoCompress) + AutoCopy, returns toast summary (3e)
 - [x] All three capture paths (fullscreen/window/area) route through the pipeline (3e)
-- [x] `ClipboardService` (Capture): writes both `CF_DIB` and registered `PNG` formats, bottom-up DIB builder (3c)
-- [x] Auto-copy wired: `AutoCopy` toggle → `ClipboardService.SetImage` in pipeline (3e)
-- [x] `JpegCompressor` (Rendering): SkiaSharp JPEG encode with quality clamp, PNG helper (3d)
-- [x] Auto-compress wired: `AutoCompress` + `CompressionQuality` → JPEG saves with `↓N%` summary (3e)
 - [x] Naming-pattern files: `FileNamePattern` tokens + unique resolution used for AutoSave (3b/3e)
-- [x] Toast with thumbnail: `TrayController.Notify(..., thumbnailPath)` builds a ≤128px HICON from the capture, passes it to `ShowNotification` with delayed `DestroyIcon` (3f)
+- [x] Toast with thumbnail: `TrayController.Notify(..., thumbnailPath)` builds a ≤128px HICON, `ShowNotification` with delayed `DestroyIcon` (3f)
+- [x] Pipeline E2E: AutoSave+AutoCompress+pattern → `Shot_{date}_fullscreen.jpg` lands in configured folder (`scripts/verify-pipeline.ps1`) (3g)
 
 ### Phase 4 — Preview panel ⬜
 - [ ] Borderless topmost panel, stack up to N shots
@@ -338,3 +352,10 @@ Live status board. Update as phases complete; keep §5 acceptance text authorita
 - **2026-08-24 P2b**: area selection overlay (`ScreendropAreaSelect` window: full-monitor dim, rubber-band rect, size HUD, crosshair, Esc/Enter), DPI-aware placement via `MonitorGeometry`, `Alt+Shift+3` → pre-capture + `ExtractSubset` (overlay never baked into shot). 12/12 tests green; overlay smoke E2E green; interactive-drag E2E skips on locked sessions.
 - **2026-08-25 P2c**: window picker (`ScreendropWindowPicker` overlay spanning the virtual screen, crosshair, hover highlight ring + title tag; candidate set = visible titled non-tool top-level windows, own-process + Progman/WorkerW/tray excluded; smallest-area hit-test for topmost), `Alt+Shift+2` → pick → interim `CaptureRegion`. 12/12 tests + all four E2E scripts green.
 - **2026-08-25 P2d**: `WindowCapturer` (PrintWindow `PW_RENDERFULLCONTENT` → flat-frame/blank auto-fallback to `BitBlt`), wired into `Alt+Shift+2`; integration test creates a live STATIC window and asserts captured dims + non-flat content. 13/13 tests green; all E2E scripts green. **Phase 2 complete** (WGC deferred — see §9 decision log).
+- **2026-08-25 P3a**: `SettingsStore` — versioned JSON settings (`%APPDATA%\Screendrop\settings.json`), safe defaults, quality clamp, atomic save, corrupt-file fallback. 19/19 tests.
+- **2026-08-25 P3b**: `FileNaming` — `{timestamp}/{date}/{time}/{type}` tokens, sanitization, unique-name resolution. 25/25 tests.
+- **2026-08-25 P3c**: `ClipboardService` — `CF_DIB` + registered `PNG` formats with bottom-up DIB builder; pure DIB layout tests (live clipboard test self-skips while the session clipboard is unavailable). 27/27 tests.
+- **2026-08-25 P3d**: `JpegCompressor` — SkiaSharp JPEG encode, quality clamp, PNG helper; added Rendering reference to test project. 31/31 tests.
+- **2026-08-25 P3e**: `AfterCapturePipeline` single fan-out (stage PNG → AutoSave → AutoCopy → summary); all three capture paths wired; `TempScreenshotStore` removed. All E2E green.
+- **2026-08-25 P3f**: thumbnail toast — `TrayController.Notify(title, msg, thumbnailPath)` builds a ≤128px HICON, `ShowNotification` custom icon, delayed `DestroyIcon` (15s). 
+- **2026-08-25 P3g**: `verify-pipeline.ps1` E2E — AutoSave+AutoCompress+pattern writes `Shot_{date}_fullscreen.jpg` into the configured folder (729 KB PNG → 135 KB JPEG). **Phase 3 complete.**
