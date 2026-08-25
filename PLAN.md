@@ -262,7 +262,10 @@ Live status board. Update as phases complete; keep §5 acceptance text authorita
 ### Phase 2 — Area + window selection 🔄 (in progress — see progress log)
 - [x] Region crop pixel-exact vs drawn rect (`GDICapturer.CaptureRegion`, 2A)
 - [x] Core geometry helpers: `Contains`, `Intersects`, `Intersect`, `FromMinMax` (2A)
-- [ ] Rubber-band overlay per monitor (dimmed backdrop, crosshair, size HUD, Esc cancel)
+- [x] Rubber-band overlay per monitor (dimmed backdrop, crosshair, size HUD, Esc cancel) (2B)
+- [x] Pre-capture + extract flow: full display captured BEFORE overlay so the overlay never appears in the shot (2B)
+- [x] DPI-aware overlay placement + DIP↔physical conversion (`MonitorGeometry`, 2B)
+- [x] `Alt+Shift+3` wired to area capture (2B)
 - [ ] Window picker with hover highlight (WindowFromPoint → hwnd → capture engine)
 - [ ] Window capture engine (PrintWindow primary; WGC deferred — see decision log)
 - [ ] WGC engine lands here for window capture (border caveat on Win10)
@@ -303,3 +306,4 @@ Live status board. Update as phases complete; keep §5 acceptance text authorita
 - **2026-08-24 P0**: scaffold, tray, mutex, manifest, build.ps1. `1264bdf`
 - **2026-08-24 P1**: monitor enumeration, GDI display capture, hotkeys 1/2/3, conflict toast, trace log, E2E scripts. `49e4ac0`
 - **2026-08-24 P2a**: `PixelRect` geometry (`Contains`/`Intersects`/`Intersect`/`FromMinMax`), `GDICapturer.CaptureRegion`, pixel-exact region test vs full-capture crop. 11/11 tests green.
+- **2026-08-24 P2b**: area selection overlay (`ScreendropAreaSelect` window: full-monitor dim, rubber-band rect, size HUD, crosshair, Esc/Enter), DPI-aware placement via `MonitorGeometry`, `Alt+Shift+3` → pre-capture + `ExtractSubset` (overlay never baked into shot). 12/12 tests green; overlay smoke E2E green; interactive-drag E2E skips on locked sessions.
