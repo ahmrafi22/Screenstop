@@ -139,6 +139,49 @@ public class CaptureIntegrationTests
     }
 
     [Fact]
+    public void Window_capture_via_print_window_matches_dimensions_with_content()
+    {
+        var hwnd = CreateTestWindow("WindowCapturer Test 123");
+        try
+        {
+            Assert.NotEqual(IntPtr.Zero, hwnd);
+            Assert.True(User32.GetWindowRect(hwnd, out var rect));
+
+            var bounds = new PixelRect(rect.Left, rect.Top, rect.Right - rect.Left, rect.Bottom - rect.Top);
+            var window = new WindowInfo(hwnd, "test", bounds);
+
+            using var capture = WindowCapturer.CaptureWindow(window);
+
+            Assert.Equal(bounds.Width, capture.Width);
+            Assert.Equal(bounds.Height, capture.Height);
+
+            var seen = new HashSet<uint>();
+            int stride = capture.RowBytes;
+            var pixels = new byte[capture.ByteCount];
+            Marshal.Copy(capture.GetPixels(), pixels, 0, pixels.Length);
+
+            for (int y = 0; y < capture.Height; y += 6)
+            {
+                for (int x = 0; x < capture.Width; x += 6)
+                {
+                    int offset = (y * stride) + (x * 4);
+                    uint key = (uint)(pixels[offset] | (pixels[offset + 1] << 8) | (pixels[offset + 2] << 16) | (pixels[offset + 3] << 24));
+                    seen.Add(key);
+                }
+            }
+
+            Assert.True(seen.Count > 1, "Captured window frame appears to be a single flat color.");
+        }
+        finally
+        {
+            if (hwnd != IntPtr.Zero)
+            {
+                User32.DestroyWindow(hwnd);
+            }
+        }
+    }
+
+    [Fact]
     public void Captured_frame_encodes_to_png_and_roundtrips()
     {
         var primary = PrimaryMonitor();
@@ -167,5 +210,62 @@ public class CaptureIntegrationTests
         {
             File.Delete(path);
         }
+    }
+
+    private static IntPtr CreateTestWindow(string title)
+    {
+        const int WsOverlapped = 0x00000000;
+        const int WsVisible = 0x10000000;
+        const int SwShow = 5;
+
+        var hwnd = User32.CreateWindowEx(
+            0,
+            "STATIC",
+            title,
+            WsOverlapped | WsVisible,
+            60,
+            60,
+            640,
+            480,
+            IntPtr.Zero,
+            IntPtr.Zero,
+            IntPtr.Zero,
+            IntPtr.Zero);
+
+        if (hwnd != IntPtr.Zero)
+        {
+            User32.ShowWindow(hwnd, SwShow);
+            User32.UpdateWindow(hwnd);
+            Thread.Sleep(200);
+        }
+
+        return hwnd;
+    }
+
+    private static class User32
+    {
+        [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+        public static extern IntPtr CreateWindowEx(uint dwExStyle, string lpClassName, string lpWindowName, int dwStyle, int x, int y, int nWidth, int nHeight, IntPtr hWndParent, IntPtr hMenu, IntPtr hInstance, IntPtr lpParam);
+
+        [DllImport("user32.dll")]
+        public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+
+        [DllImport("user32.dll")]
+        public static extern bool UpdateWindow(IntPtr hWnd);
+
+        [DllImport("user32.dll")]
+        public static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
+
+        [DllImport("user32.dll")]
+        public static extern bool DestroyWindow(IntPtr hWnd);
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct RECT
+    {
+        public int Left;
+        public int Top;
+        public int Right;
+        public int Bottom;
     }
 }

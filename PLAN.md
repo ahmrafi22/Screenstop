@@ -87,6 +87,28 @@ with only the .NET SDK. Same APIs, fewer moving parts.
    `scripts/verify-capture-e2e.ps1` posts a synthetic `WM_HOTKEY` to the app's hidden
    window and asserts a real display-sized PNG lands in `%TEMP%\Screendrop`.
 
+**Decision log (2026-08-25, Phase 2):**
+1. *WGC deferred for window capture.* `WindowCapturer` ships PrintWindow
+   (`PW_RENDERFULLCONTENT`) primary with GDI `BitBlt` fallback (auto-fallback when
+   PrintWindow fails or returns a flat frame). Rationale: WGC needs the
+   `IGraphicsCaptureItemInterop` COM dance plus a D3D11 GPU→CPU readback path, triggers an
+   OS permission prompt, and draws a yellow border on Win10 — none of which adds fidelity
+   for stills on this machine, which lacks a locally installed Windows SDK to even build
+   the projection reliably. The `WindowCapturer` seam keeps a future WGC engine a drop-in.
+   Plan §5 Phase 2 wording "WGC engine lands here" superseded; revisit when GPU-content
+   window capture (video/3D viewports) is required, likely with Phase 6 parity work.
+2. *Overlay never baked into shots:* area capture pre-captures the focused display BEFORE
+   showing the selection overlay, then `ExtractSubset`s on confirm. This sidesteps the
+   `WDA_EXCLUDEFROMCAPTURE` requirement for area mode entirely (still needed for the
+   Preview panel in Phase 4). Window capture is overlay-free by construction (PrintWindow
+   reads the window's own DWM content).
+3. *Test-time interaction limits:* the automation host is a lock-screen session, so
+   WPF-overlay mouse input cannot be synthesized end-to-end. Overlay smoke tests verify
+   show/Esc-close/telemetry/app-alive; drag/click E2E (`verify-area-capture.ps1`) skips
+   with a clear message on locked sessions and runs manually on an unlocked desktop.
+4. *Session-lock resilience:* all Phase 2 capture paths (BitBlt, PrintWindow, region crop)
+   verified working while the session is locked.
+
 ### Why not the alternatives (decided)
 - **WinUI 3**: immature story for borderless overlay windows and tray apps.
 - **Tauri/Electron**: Screendrop is mostly custom native windows (overlays, click-through,
@@ -259,7 +281,7 @@ Live status board. Update as phases complete; keep §5 acceptance text authorita
 - [x] Automated E2E: synthetic `WM_HOTKEY` produces real display-sized PNG
 - [ ] Manual: real keypress on multi-monitor mixed-DPI setup (single-monitor machine here)
 
-### Phase 2 — Area + window selection 🔄 (in progress — see progress log)
+### Phase 2 — Area + window selection ✅ (WGC deferred by decision; manual QA open)
 - [x] Region crop pixel-exact vs drawn rect (`GDICapturer.CaptureRegion`, 2A)
 - [x] Core geometry helpers: `Contains`, `Intersects`, `Intersect`, `FromMinMax` (2A)
 - [x] Rubber-band overlay per monitor (dimmed backdrop, crosshair, size HUD, Esc cancel) (2B)
@@ -267,9 +289,9 @@ Live status board. Update as phases complete; keep §5 acceptance text authorita
 - [x] DPI-aware overlay placement + DIP↔physical conversion (`MonitorGeometry`, 2B)
 - [x] `Alt+Shift+3` wired to area capture (2B)
 - [x] Window picker with hover highlight + live title tag (smallest-area hit-test over enumerated windows, own/tool/desktop windows excluded) (2C)
-- [x] `Alt+Shift+2` wired to pick → capture (interim `CaptureRegion`, engine upgrade in 2D) (2C)
-- [ ] Window capture engine (PrintWindow primary; WGC deferred — see decision log)
-- [ ] WGC engine lands here for window capture (border caveat on Win10)
+- [x] `Alt+Shift+2` wired to pick → capture (2C)
+- [x] Window capture engine: `WindowCapturer` (PrintWindow `PW_RENDERFULLCONTENT` primary, BitBlt fallback on blank frame) (2D)
+- [ ] WGC engine — **deferred by decision** (see §9 decision log); BitBlt/PrintWindow satisfy v1 stills
 
 ### Phase 3 — After-capture pipeline ⬜
 - [ ] Save-to-temp PNG wired into single fan-out point (`AfterCapturePipeline.Run`)
@@ -309,3 +331,4 @@ Live status board. Update as phases complete; keep §5 acceptance text authorita
 - **2026-08-24 P2a**: `PixelRect` geometry (`Contains`/`Intersects`/`Intersect`/`FromMinMax`), `GDICapturer.CaptureRegion`, pixel-exact region test vs full-capture crop. 11/11 tests green.
 - **2026-08-24 P2b**: area selection overlay (`ScreendropAreaSelect` window: full-monitor dim, rubber-band rect, size HUD, crosshair, Esc/Enter), DPI-aware placement via `MonitorGeometry`, `Alt+Shift+3` → pre-capture + `ExtractSubset` (overlay never baked into shot). 12/12 tests green; overlay smoke E2E green; interactive-drag E2E skips on locked sessions.
 - **2026-08-25 P2c**: window picker (`ScreendropWindowPicker` overlay spanning the virtual screen, crosshair, hover highlight ring + title tag; candidate set = visible titled non-tool top-level windows, own-process + Progman/WorkerW/tray excluded; smallest-area hit-test for topmost), `Alt+Shift+2` → pick → interim `CaptureRegion`. 12/12 tests + all four E2E scripts green.
+- **2026-08-25 P2d**: `WindowCapturer` (PrintWindow `PW_RENDERFULLCONTENT` → flat-frame/blank auto-fallback to `BitBlt`), wired into `Alt+Shift+2`; integration test creates a live STATIC window and asserts captured dims + non-flat content. 13/13 tests green; all E2E scripts green. **Phase 2 complete** (WGC deferred — see §9 decision log).

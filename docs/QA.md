@@ -22,6 +22,8 @@ Automated (all green):
       trace records cancellation; app stays alive
 - [x] Picker overlay smoke: `Alt+Shift+2` shows `ScreendropWindowPicker`; Esc closes it;
       trace records cancellation; app stays alive
+- [x] `WindowCapturer`: live test window captured via PrintWindow with correct dims and
+      non-flat content (integration test)
 - [x] Regression: fullscreen capture + hotkey lifecycle still green
 - [ ] Interactive drag E2E (`scripts/verify-area-capture.ps1`) — SKIPPED while session
       locked; run on unlocked desktop
