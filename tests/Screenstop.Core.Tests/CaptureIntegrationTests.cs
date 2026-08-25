@@ -1,5 +1,6 @@
 using System.Runtime.InteropServices;
 using Screenstop.Capture;
+using Screenstop.Core.Geometry;
 using SkiaSharp;
 using Xunit;
 
@@ -64,6 +65,59 @@ public class CaptureIntegrationTests
         }
 
         Assert.True(seen.Count > 1, "Captured frame appears to be a single flat color.");
+    }
+
+    [Fact]
+    public void Region_capture_is_pixel_exact_match_of_full_capture_crop()
+    {
+        var primary = PrimaryMonitor();
+        var bounds = primary.PhysicalBounds;
+
+        using var full = GDICapturer.CaptureMonitor(primary);
+
+        var region = new PixelRect(
+            bounds.X + bounds.Width / 4,
+            bounds.Y + bounds.Height / 4,
+            bounds.Width / 2,
+            bounds.Height / 2);
+
+        using var regionCapture = GDICapturer.CaptureRegion(region);
+        Assert.Equal(region.Width, regionCapture.Width);
+        Assert.Equal(region.Height, regionCapture.Height);
+
+        using var cropped = new SKBitmap(new SKImageInfo(region.Width, region.Height, SKColorType.Bgra8888, SKAlphaType.Opaque));
+        Assert.True(full.Bitmap.ExtractSubset(cropped, new SKRectI(region.X - bounds.X, region.Y - bounds.Y, region.X - bounds.X + region.Width, region.Y - bounds.Y + region.Height)));
+
+        var a = new byte[regionCapture.ByteCount];
+        var b = new byte[cropped.ByteCount];
+        Marshal.Copy(regionCapture.GetPixels(), a, 0, a.Length);
+        Marshal.Copy(cropped.GetPixels(), b, 0, b.Length);
+
+        int strideA = regionCapture.RowBytes;
+        int strideB = cropped.RowBytes;
+        int mismatches = 0;
+        int total = 0;
+
+        for (int y = 0; y < regionCapture.Height; y += 4)
+        {
+            for (int x = 0; x < regionCapture.Width; x += 4)
+            {
+                total++;
+                int oa = (y * strideA) + (x * 4);
+                int ob = (y * strideB) + (x * 4);
+                for (int c = 0; c < 4; c++)
+                {
+                    if (a[oa + c] != b[ob + c])
+                    {
+                        mismatches++;
+                        break;
+                    }
+                }
+            }
+        }
+
+        double mismatchRatio = (double)mismatches / total;
+        Assert.True(mismatchRatio < 0.05, $"Region capture diverged from full-capture crop ({mismatchRatio:P0} mismatches).");
     }
 
     [Fact]
