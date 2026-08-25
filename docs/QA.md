@@ -20,6 +20,9 @@ Automated (all green):
 - [x] `MonitorGeometry` DPI scale sanity + DIP→physical roundtrip
 - [x] Area overlay smoke: `Alt+Shift+3` shows `ScreendropAreaSelect` window; Esc closes it;
       trace records cancellation; app stays alive
+- [x] Picker overlay smoke: `Alt+Shift+2` shows `ScreendropWindowPicker`; Esc closes it;
+      trace records cancellation; app stays alive
+- [x] Regression: fullscreen capture + hotkey lifecycle still green
 - [ ] Interactive drag E2E (`scripts/verify-area-capture.ps1`) — SKIPPED while session
       locked; run on unlocked desktop
 
@@ -29,6 +32,9 @@ Manual:
       dragged rectangle exactly (pixel-perfect)
 - [ ] Overlay dims the whole monitor; selection rect shows live `x, y · w × h px` HUD
 - [ ] Esc cancels silently; Enter confirms current drag; tiny drags (<2px) cancel
+- [ ] `Alt+Shift+2` → hover highlights the window under the cursor with a blue ring +
+      title tag; click captures it; occluded/overlapping windows pick the topmost one
+- [ ] Picker excludes Screendrop's own windows, desktop, taskbar, and tool windows
 - [ ] Mixed-DPI: overlay covers the focused monitor exactly; crop matches physical pixels
 
 ## Phase 1 — Monitor capture + hotkeys ✅ (automated) / manual items open

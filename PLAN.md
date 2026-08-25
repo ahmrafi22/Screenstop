@@ -266,7 +266,8 @@ Live status board. Update as phases complete; keep §5 acceptance text authorita
 - [x] Pre-capture + extract flow: full display captured BEFORE overlay so the overlay never appears in the shot (2B)
 - [x] DPI-aware overlay placement + DIP↔physical conversion (`MonitorGeometry`, 2B)
 - [x] `Alt+Shift+3` wired to area capture (2B)
-- [ ] Window picker with hover highlight (WindowFromPoint → hwnd → capture engine)
+- [x] Window picker with hover highlight + live title tag (smallest-area hit-test over enumerated windows, own/tool/desktop windows excluded) (2C)
+- [x] `Alt+Shift+2` wired to pick → capture (interim `CaptureRegion`, engine upgrade in 2D) (2C)
 - [ ] Window capture engine (PrintWindow primary; WGC deferred — see decision log)
 - [ ] WGC engine lands here for window capture (border caveat on Win10)
 
@@ -307,3 +308,4 @@ Live status board. Update as phases complete; keep §5 acceptance text authorita
 - **2026-08-24 P1**: monitor enumeration, GDI display capture, hotkeys 1/2/3, conflict toast, trace log, E2E scripts. `49e4ac0`
 - **2026-08-24 P2a**: `PixelRect` geometry (`Contains`/`Intersects`/`Intersect`/`FromMinMax`), `GDICapturer.CaptureRegion`, pixel-exact region test vs full-capture crop. 11/11 tests green.
 - **2026-08-24 P2b**: area selection overlay (`ScreendropAreaSelect` window: full-monitor dim, rubber-band rect, size HUD, crosshair, Esc/Enter), DPI-aware placement via `MonitorGeometry`, `Alt+Shift+3` → pre-capture + `ExtractSubset` (overlay never baked into shot). 12/12 tests green; overlay smoke E2E green; interactive-drag E2E skips on locked sessions.
+- **2026-08-25 P2c**: window picker (`ScreendropWindowPicker` overlay spanning the virtual screen, crosshair, hover highlight ring + title tag; candidate set = visible titled non-tool top-level windows, own-process + Progman/WorkerW/tray excluded; smallest-area hit-test for topmost), `Alt+Shift+2` → pick → interim `CaptureRegion`. 12/12 tests + all four E2E scripts green.

@@ -1,9 +1,11 @@
 using System.IO;
+using System.Threading;
 using System.Windows;
 using System.Windows.Threading;
 using Screendrop.App.AreaSelect;
 using Screendrop.App.Hotkeys;
 using Screendrop.App.Infrastructure;
+using Screendrop.App.WindowPicker;
 using Screendrop.Capture;
 using Screendrop.Core.Geometry;
 using SkiaSharp;
@@ -29,12 +31,51 @@ internal sealed class CaptureCoordinator
                 CaptureFocusedDisplay();
                 break;
             case CaptureMode.Window:
-                _notify("Screendrop", "Window capture arrives with the next phase.");
+                RunWindowPick();
                 break;
             case CaptureMode.Area:
                 RunAreaSelection();
                 break;
         }
+    }
+
+    private void RunWindowPick()
+    {
+        var monitors = MonitorEnumerator.Enumerate();
+        if (monitors.Count == 0)
+        {
+            NotifyUi("Capture failed", "No display found.");
+            return;
+        }
+
+        var dispatcher = Application.Current.Dispatcher;
+
+        Task.Run(() =>
+        {
+            try
+            {
+                WindowInfo? picked = null;
+                dispatcher.Invoke(() => { picked = WindowPickerController.Pick(monitors); });
+                if (picked is null)
+                {
+                    TraceLog.Write("window pick cancelled");
+                    return;
+                }
+
+                TraceLog.Write($"picked {picked.Title} {picked.Bounds}");
+                Thread.Sleep(150);
+
+                using var bitmap = GDICapturer.CaptureRegion(picked.Bounds);
+                string path = TempScreenshotStore.SavePng(bitmap);
+                TraceLog.Write($"saved window {path} ({bitmap.Width}x{bitmap.Height})");
+                NotifyUi("Screenshot captured", Path.GetFileName(path));
+            }
+            catch (Exception ex)
+            {
+                TraceLog.Write($"window capture exception: {ex}");
+                NotifyUi("Capture failed", ex.Message);
+            }
+        });
     }
 
     private void RunAreaSelection()
