@@ -2,6 +2,15 @@
 
 Manual verification per phase. Check items off as verified.
 
+## Audit — Phases 2–3 re-review (2026-08-25)
+
+- [x] Region capture never returns garbage for off-screen edges (PatBlt black fill)
+- [x] Minimized windows are skipped by the picker (IsIconic)
+- [x] Hotkey during an open area/picker overlay is ignored (busy guard), no second overlay
+- [x] Settings save is atomic (rename, no missing-file window)
+- [x] Reserved device names (`CON`, `COM1`, …) get a `_` prefix
+- [x] Regression: 39/39 xUnit + all 5 E2E scripts green
+
 ## Phase 0 — Scaffold ✅
 
 - [x] `dotnet build` green from clean clone (`.\build.ps1`)

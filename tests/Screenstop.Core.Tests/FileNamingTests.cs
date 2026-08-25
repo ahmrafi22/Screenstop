@@ -44,6 +44,21 @@ public class FileNamingTests
         Assert.EndsWith(".png", name);
     }
 
+    [Theory]
+    [InlineData("CON")]
+    [InlineData("PRN")]
+    [InlineData("AUX")]
+    [InlineData("NUL")]
+    [InlineData("COM1")]
+    [InlineData("LPT9")]
+    public void Reserved_device_names_are_prefix_guarded(string pattern)
+    {
+        var name = FileNaming.BuildFileName(pattern, FixedTime, "fullscreen", "png");
+
+        Assert.StartsWith("_", name);
+        Assert.EndsWith(".png", name);
+    }
+
     [Fact]
     public void ResolveUnique_returns_original_when_free()
     {

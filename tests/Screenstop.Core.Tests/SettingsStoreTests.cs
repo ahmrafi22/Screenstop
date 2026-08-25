@@ -100,4 +100,22 @@ public class SettingsStoreTests : IDisposable
         Assert.True(reloaded.AutoCopy);
         Assert.Equal(0.4, reloaded.CompressionQuality);
     }
+
+    [Fact]
+    public void Save_overwrites_existing_file_without_leaving_temp()
+    {
+        var first = new ScreenstopSettings { AutoSave = true, AutoCopy = true };
+        SettingsStore.Save(first, _file);
+
+        var second = new ScreenstopSettings { AutoSave = false, AutoCompress = true, CompressionQuality = 0.5 };
+        SettingsStore.Save(second, _file);
+
+        var loaded = SettingsStore.Load(_file);
+        Assert.False(loaded.AutoSave);
+        Assert.False(loaded.AutoCopy);
+        Assert.True(loaded.AutoCompress);
+        Assert.Equal(0.5, loaded.CompressionQuality);
+
+        Assert.False(Directory.EnumerateFiles(_dir, "*.tmp.*").Any());
+    }
 }
