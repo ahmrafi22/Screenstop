@@ -55,6 +55,7 @@ public static class GDICapturer
                 try
                 {
                     IntPtr previous = NativeMethods.SelectObject(memoryDc, bitmap);
+                    NativeMethods.PatBlt(memoryDc, 0, 0, width, height, NativeMethods.BLACKNESS);
                     NativeMethods.BitBlt(memoryDc, 0, 0, width, height, screenDc, originX, originY, NativeMethods.SRCCOPY | NativeMethods.CAPTUREBLT);
                     NativeMethods.SelectObject(memoryDc, previous);
 

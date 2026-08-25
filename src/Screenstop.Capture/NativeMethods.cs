@@ -51,6 +51,7 @@ internal static class NativeMethods
     internal const uint MONITOR_DEFAULTTONEAREST = 0x2;
     internal const uint SRCCOPY = 0x00CC0020;
     internal const uint CAPTUREBLT = 0x40000000;
+    internal const uint BLACKNESS = 0x00000042;
     internal const uint DIB_RGB_COLORS = 0;
     internal const int LOGPIXELSX = 88;
     internal const int LOGPIXELSY = 90;
@@ -100,6 +101,9 @@ internal static class NativeMethods
     internal static extern bool BitBlt(IntPtr hdcDest, int xDest, int yDest, int width, int height, IntPtr hdcSrc, int xSrc, int ySrc, uint rop);
 
     [DllImport("gdi32.dll")]
+    internal static extern bool PatBlt(IntPtr hdc, int x, int y, int w, int h, uint rop);
+
+    [DllImport("gdi32.dll")]
     internal static extern int GetDIBits(IntPtr hdc, IntPtr hbm, uint start, uint cLines, [Out] byte[]? lpvBits, ref BITMAPINFO lpbmi, uint usage);
 
     [DllImport("gdi32.dll", CharSet = CharSet.Unicode)]
@@ -113,6 +117,9 @@ internal static class NativeMethods
 
     [DllImport("user32.dll")]
     internal static extern bool IsWindowVisible(IntPtr hWnd);
+
+    [DllImport("user32.dll")]
+    internal static extern bool IsIconic(IntPtr hWnd);
 
     [DllImport("user32.dll")]
     internal static extern int GetWindowLong(IntPtr hWnd, int nIndex);

@@ -1,3 +1,4 @@
+using System.Threading;
 using System.Windows;
 using System.Windows.Threading;
 using Screenstop.App.AreaSelect;
@@ -15,6 +16,7 @@ internal sealed class CaptureCoordinator
     public delegate void NotifyHandler(string title, string message, string? thumbnailPath = null);
 
     private readonly NotifyHandler _notify;
+    private int _busy;
 
     public CaptureCoordinator(NotifyHandler notify)
     {
@@ -37,12 +39,28 @@ internal sealed class CaptureCoordinator
         }
     }
 
+    private bool TryBegin()
+    {
+        return Interlocked.CompareExchange(ref _busy, 1, 0) == 0;
+    }
+
+    private void EndCapture()
+    {
+        Interlocked.Exchange(ref _busy, 0);
+    }
+
     private void RunWindowPick()
     {
         var monitors = MonitorEnumerator.Enumerate();
         if (monitors.Count == 0)
         {
             NotifyUi("Capture failed", "No display found.");
+            return;
+        }
+
+        if (!TryBegin())
+        {
+            TraceLog.Write("capture ignored: busy");
             return;
         }
 
@@ -72,6 +90,10 @@ internal sealed class CaptureCoordinator
                 TraceLog.Write($"window capture exception: {ex}");
                 NotifyUi("Capture failed", ex.Message);
             }
+            finally
+            {
+                EndCapture();
+            }
         });
     }
 
@@ -81,6 +103,12 @@ internal sealed class CaptureCoordinator
         if (monitor is null)
         {
             NotifyUi("Capture failed", "No display found.");
+            return;
+        }
+
+        if (!TryBegin())
+        {
+            TraceLog.Write("capture ignored: busy");
             return;
         }
 
@@ -135,11 +163,21 @@ internal sealed class CaptureCoordinator
                 TraceLog.Write($"area capture exception: {ex}");
                 NotifyUi("Capture failed", ex.Message);
             }
+            finally
+            {
+                EndCapture();
+            }
         });
     }
 
     private void CaptureFocusedDisplay()
     {
+        if (!TryBegin())
+        {
+            TraceLog.Write("capture ignored: busy");
+            return;
+        }
+
         Task.Run(() =>
         {
             try
@@ -161,6 +199,10 @@ internal sealed class CaptureCoordinator
             {
                 Infrastructure.TraceLog.Write($"capture exception: {ex}");
                 NotifyUi("Capture failed", ex.Message);
+            }
+            finally
+            {
+                EndCapture();
             }
         });
     }
