@@ -63,10 +63,9 @@ internal sealed class CaptureCoordinator
                 }
 
                 TraceLog.Write($"picked {picked.Title} {picked.Bounds}");
-                Thread.Sleep(150);
 
-                using var bitmap = GDICapturer.CaptureRegion(picked.Bounds);
-                string path = TempScreenshotStore.SavePng(bitmap);
+                    using var bitmap = WindowCapturer.CaptureWindow(picked);
+                    string path = TempScreenshotStore.SavePng(bitmap);
                 TraceLog.Write($"saved window {path} ({bitmap.Width}x{bitmap.Height})");
                 NotifyUi("Screenshot captured", Path.GetFileName(path));
             }
