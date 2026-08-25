@@ -56,6 +56,8 @@ internal static class NativeMethods
     internal const int LOGPIXELSY = 90;
     internal const int GWL_EXSTYLE = -20;
     internal const long WS_EX_TOOLWINDOW = 0x00000080;
+    internal const uint CF_DIB = 8;
+    internal const uint GMEM_MOVEABLE = 0x0002;
 
     internal delegate bool MonitorEnumProc(IntPtr hMonitor, IntPtr hdcMonitor, ref RECT lprcMonitor, IntPtr dwData);
 
@@ -129,6 +131,33 @@ internal static class NativeMethods
 
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
     internal static extern int GetClassNameW(IntPtr hWnd, [Out] System.Text.StringBuilder lpClassName, int nMaxCount);
+
+    [DllImport("user32.dll")]
+    internal static extern bool OpenClipboard(IntPtr hWndNewOwner);
+
+    [DllImport("user32.dll")]
+    internal static extern bool EmptyClipboard();
+
+    [DllImport("user32.dll")]
+    internal static extern IntPtr SetClipboardData(uint uFormat, IntPtr hMem);
+
+    [DllImport("user32.dll")]
+    internal static extern bool CloseClipboard();
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    internal static extern uint RegisterClipboardFormatW(string lpszFormat);
+
+    [DllImport("kernel32.dll")]
+    internal static extern IntPtr GlobalAlloc(uint uFlags, UIntPtr dwBytes);
+
+    [DllImport("kernel32.dll")]
+    internal static extern IntPtr GlobalLock(IntPtr hMem);
+
+    [DllImport("kernel32.dll")]
+    internal static extern bool GlobalUnlock(IntPtr hMem);
+
+    [DllImport("kernel32.dll")]
+    internal static extern IntPtr GlobalFree(IntPtr hMem);
 
     internal static string GetWindowTitle(IntPtr hwnd)
     {
