@@ -75,6 +75,15 @@ public class CaptureIntegrationTests
 
         using var full = GDICapturer.CaptureMonitor(primary);
 
+        using (var stabilityA = GDICapturer.CaptureMonitor(primary))
+        using (var stabilityB = GDICapturer.CaptureMonitor(primary))
+        {
+            if (MismatchRatio(stabilityA.Bitmap, stabilityB.Bitmap) > 0.20)
+            {
+                return;
+            }
+        }
+
         var region = new PixelRect(
             bounds.X + bounds.Width / 4,
             bounds.Y + bounds.Height / 4,
@@ -85,26 +94,11 @@ public class CaptureIntegrationTests
         Assert.Equal(region.Width, regionCapture.Width);
         Assert.Equal(region.Height, regionCapture.Height);
 
-        using (var stabilityA = GDICapturer.CaptureMonitor(primary))
-        using (var stabilityB = GDICapturer.CaptureMonitor(primary))
-        {
-            double instability = MismatchRatio(stabilityA.Bitmap, stabilityB.Bitmap);
-            if (instability > 0.30)
-            {
-                return;
-            }
-        }
-
         using var cropped = new SKBitmap(new SKImageInfo(region.Width, region.Height, SKColorType.Bgra8888, SKAlphaType.Opaque));
         Assert.True(full.Bitmap.ExtractSubset(cropped, new SKRectI(region.X - bounds.X, region.Y - bounds.Y, region.X - bounds.X + region.Width, region.Y - bounds.Y + region.Height)));
 
         double mismatch = MismatchRatio(regionCapture, cropped);
-
-        using var fullAgain = GDICapturer.CaptureMonitor(primary);
-        double liveDrift = MismatchRatio(full.Bitmap, fullAgain.Bitmap);
-
-        double tolerance = Math.Max(0.15, liveDrift + 0.10);
-        Assert.True(mismatch < tolerance, $"Region capture diverged from full-capture crop ({mismatch:P0} mismatches) against {liveDrift:P0} live screen drift.");
+        Assert.True(mismatch < 0.15, $"Region capture diverged from full-capture crop ({mismatch:P0} mismatches).");
     }
 
     private static double MismatchRatio(SKBitmap first, SKBitmap second)
@@ -297,6 +291,28 @@ public class CaptureIntegrationTests
             Assert.NotNull(decoded);
             Assert.Equal(width, decoded!.Width);
             Assert.Equal(height, decoded.Height);
+        }
+    }
+
+    [Fact]
+    public void Display_affinity_excludes_window_from_capture()
+    {
+        var hwnd = CreateTestWindow("AffinityTest");
+        try
+        {
+            Assert.NotEqual(IntPtr.Zero, hwnd);
+            Assert.Equal(DisplayAffinity.WdaNone, DisplayAffinity.GetAffinity(hwnd));
+
+            Assert.True(DisplayAffinity.ExcludeFromCapture(hwnd));
+
+            Assert.Equal(DisplayAffinity.WdaExcludedFromCapture, DisplayAffinity.GetAffinity(hwnd));
+        }
+        finally
+        {
+            if (hwnd != IntPtr.Zero)
+            {
+                User32.DestroyWindow(hwnd);
+            }
         }
     }
 

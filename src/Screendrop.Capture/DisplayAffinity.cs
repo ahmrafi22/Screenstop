@@ -10,7 +10,7 @@ public static class DisplayAffinity
 
     public static bool ExcludeFromCapture(IntPtr hwnd)
     {
-        return SetWindowDisplayAffinity(hwnd, WdaMonitor);
+        return SetWindowDisplayAffinity(hwnd, WdaExcludedFromCapture);
     }
 
     public static uint GetAffinity(IntPtr hwnd)
