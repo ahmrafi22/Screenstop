@@ -16,11 +16,13 @@ internal sealed class CaptureCoordinator
     public delegate void NotifyHandler(string title, string message, string? thumbnailPath = null);
 
     private readonly NotifyHandler _notify;
+    private readonly Action<AfterCaptureResult, string>? _onCapture;
     private int _busy;
 
-    public CaptureCoordinator(NotifyHandler notify)
+    public CaptureCoordinator(NotifyHandler notify, Action<AfterCaptureResult, string>? onCapture = null)
     {
         _notify = notify;
+        _onCapture = onCapture;
     }
 
     public void HandleHotkey(object? sender, CaptureMode mode)
@@ -84,6 +86,7 @@ internal sealed class CaptureCoordinator
                 var result = AfterCapturePipeline.Run(bitmap, "window");
                 TraceLog.Write($"pipeline window: {result.DisplaySummary}");
                 NotifyUi("Screenshot captured", result.DisplaySummary, result.ThumbnailPath);
+                InvokeCaptureComplete(result, "window");
             }
             catch (Exception ex)
             {
@@ -156,6 +159,7 @@ internal sealed class CaptureCoordinator
                     var result = AfterCapturePipeline.Run(crop, "area");
                     TraceLog.Write($"pipeline area: {result.DisplaySummary}");
                     NotifyUi("Screenshot captured", result.DisplaySummary, result.ThumbnailPath);
+                    InvokeCaptureComplete(result, "area");
                 });
             }
             catch (Exception ex)
@@ -194,6 +198,7 @@ internal sealed class CaptureCoordinator
                 var result = AfterCapturePipeline.Run(capture.Bitmap, "fullscreen");
                 Infrastructure.TraceLog.Write($"pipeline fullscreen: {result.DisplaySummary}");
                 NotifyUi("Screenshot captured", result.DisplaySummary, result.ThumbnailPath);
+                InvokeCaptureComplete(result, "fullscreen");
             }
             catch (Exception ex)
             {
@@ -205,6 +210,22 @@ internal sealed class CaptureCoordinator
                 EndCapture();
             }
         });
+    }
+
+    private void InvokeCaptureComplete(AfterCaptureResult result, string captureType)
+    {
+        if (_onCapture is null)
+        {
+            return;
+        }
+
+        var dispatcher = Application.Current?.Dispatcher;
+        if (dispatcher is null)
+        {
+            return;
+        }
+
+        dispatcher.BeginInvoke(DispatcherPriority.Normal, () => _onCapture(result, captureType));
     }
 
     private void NotifyUi(string title, string message, string? thumbnailPath = null)
