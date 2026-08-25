@@ -14,6 +14,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\Screenstop.Core\Screenstop.Core.csproj" />
     <ProjectReference Include="..\..\src\Screenstop.Capture\Screenstop.Capture.csproj" />
+    <ProjectReference Include="..\..\src\Screenstop.Rendering\Screenstop.Rendering.csproj" />
   </ItemGroup>
 
 </Project>
