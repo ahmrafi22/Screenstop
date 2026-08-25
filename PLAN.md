@@ -259,10 +259,12 @@ Live status board. Update as phases complete; keep §5 acceptance text authorita
 - [x] Automated E2E: synthetic `WM_HOTKEY` produces real display-sized PNG
 - [ ] Manual: real keypress on multi-monitor mixed-DPI setup (single-monitor machine here)
 
-### Phase 2 — Area + window selection ⬜
+### Phase 2 — Area + window selection 🔄 (in progress — see progress log)
+- [x] Region crop pixel-exact vs drawn rect (`GDICapturer.CaptureRegion`, 2A)
+- [x] Core geometry helpers: `Contains`, `Intersects`, `Intersect`, `FromMinMax` (2A)
 - [ ] Rubber-band overlay per monitor (dimmed backdrop, crosshair, size HUD, Esc cancel)
-- [ ] Area crop pixel-exact vs drawn rect
-- [ ] Window picker with hover highlight (WindowFromPoint → hwnd → WGC item)
+- [ ] Window picker with hover highlight (WindowFromPoint → hwnd → capture engine)
+- [ ] Window capture engine (PrintWindow primary; WGC deferred — see decision log)
 - [ ] WGC engine lands here for window capture (border caveat on Win10)
 
 ### Phase 3 — After-capture pipeline ⬜
@@ -296,3 +298,8 @@ Live status board. Update as phases complete; keep §5 acceptance text authorita
 - [ ] Crash log
 - [ ] Inno Setup installer + icon set
 - [ ] Clean install/uninstall/reinstall QA
+
+### Build progress log
+- **2026-08-24 P0**: scaffold, tray, mutex, manifest, build.ps1. `1264bdf`
+- **2026-08-24 P1**: monitor enumeration, GDI display capture, hotkeys 1/2/3, conflict toast, trace log, E2E scripts. `49e4ac0`
+- **2026-08-24 P2a**: `PixelRect` geometry (`Contains`/`Intersects`/`Intersect`/`FromMinMax`), `GDICapturer.CaptureRegion`, pixel-exact region test vs full-capture crop. 11/11 tests green.

@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using Screendrop.Core.Geometry;
 using SkiaSharp;
 
 namespace Screendrop.Capture;
@@ -13,9 +14,22 @@ public static class GDICapturer
         }
 
         var bounds = monitor.PhysicalBounds;
-        int width = bounds.Width;
-        int height = bounds.Height;
+        var bitmap = CaptureRect(bounds.X, bounds.Y, bounds.Width, bounds.Height);
+        return new DisplayCapture(monitor, bitmap, DateTimeOffset.Now);
+    }
 
+    public static SKBitmap CaptureRegion(PixelRect region)
+    {
+        if (region.IsEmpty)
+        {
+            throw new ArgumentException("Capture region is empty.", nameof(region));
+        }
+
+        return CaptureRect(region.X, region.Y, region.Width, region.Height);
+    }
+
+    private static SKBitmap CaptureRect(int originX, int originY, int width, int height)
+    {
         IntPtr screenDc = NativeMethods.GetDC(IntPtr.Zero);
         if (screenDc == IntPtr.Zero)
         {
@@ -41,7 +55,7 @@ public static class GDICapturer
                 try
                 {
                     IntPtr previous = NativeMethods.SelectObject(memoryDc, bitmap);
-                    NativeMethods.BitBlt(memoryDc, 0, 0, width, height, screenDc, bounds.X, bounds.Y, NativeMethods.SRCCOPY | NativeMethods.CAPTUREBLT);
+                    NativeMethods.BitBlt(memoryDc, 0, 0, width, height, screenDc, originX, originY, NativeMethods.SRCCOPY | NativeMethods.CAPTUREBLT);
                     NativeMethods.SelectObject(memoryDc, previous);
 
                     var pixels = new byte[checked(width * height * 4)];
@@ -63,7 +77,7 @@ public static class GDICapturer
                     var skBitmap = new SKBitmap(imageInfo);
                     Marshal.Copy(pixels, 0, skBitmap.GetPixels(), pixels.Length);
 
-                    return new DisplayCapture(monitor, skBitmap, DateTimeOffset.Now);
+                    return skBitmap;
                 }
                 finally
                 {
