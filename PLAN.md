@@ -299,6 +299,7 @@ Live status board. Update as phases complete; keep §5 acceptance text authorita
 - [ ] Save-to-temp PNG wired into single fan-out point (`AfterCapturePipeline.Run`)
 - [x] `ClipboardService` (Capture): writes both `CF_DIB` and registered `PNG` formats, bottom-up DIB builder (3c)
 - [ ] Auto-copy (CF_DIB + registered PNG format)
+- [x] `JpegCompressor` (Rendering): SkiaSharp JPEG encode with quality clamp, PNG helper (3d)
 - [ ] Auto-compress JPEG (quality setting)
 - [ ] Naming-pattern files (`FileNaming` port)
 - [ ] Toast with thumbnail

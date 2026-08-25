@@ -14,6 +14,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\Screendrop.Core\Screendrop.Core.csproj" />
     <ProjectReference Include="..\..\src\Screendrop.Capture\Screendrop.Capture.csproj" />
+    <ProjectReference Include="..\..\src\Screendrop.Rendering\Screendrop.Rendering.csproj" />
   </ItemGroup>
 
 </Project>
