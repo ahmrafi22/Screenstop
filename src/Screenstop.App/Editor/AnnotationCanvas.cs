@@ -170,28 +170,61 @@ internal sealed class AnnotationCanvas : SKElement
 
     /// Applies an updated strength to the selected redaction annotation as
     /// one undo step. No-op unless a pixelate/blur annotation is selected.
-    public void SetSelectedDensity(double density)
+    private bool _selectedStyleEditActive;
+
+    public void BeginSelectedStyleEdit()
+    {
+        if (Model.Selected is null) return;
+        Model.BeginBatch();
+        _selectedStyleEditActive = true;
+    }
+
+    public void EndSelectedStyleEdit()
+    {
+        if (!_selectedStyleEditActive) return;
+        _selectedStyleEditActive = false;
+        Model.EndBatch();
+    }
+
+    public void SetSelectedDensity(double density, bool isCoalesced = false)
     {
         if (Model.Selected is not { } selected || !selected.Tool.IsRedactionTool())
         {
             return;
         }
 
-        Model.BeginBatch();
+        if (!isCoalesced) Model.BeginBatch();
         selected.Density = Math.Clamp(density, 0.02, 1);
-        Model.EndBatch();
+        if (isCoalesced) Model.NotifyChanged(); else Model.EndBatch();
     }
 
     /// Applies a font size to the selected text annotation as one undo step.
-    public void SetSelectedFontSize(double fontSize)
+    public void SetSelectedFontSize(double fontSize, bool isCoalesced = false)
     {
         if (Model.Selected is not { } selected || selected.Tool != AnnotationTool.Text)
         {
             return;
         }
 
-        Model.BeginBatch();
+        if (!isCoalesced) Model.BeginBatch();
         selected.FontSize = Math.Clamp(fontSize, 0.008, 0.12);
+        if (isCoalesced) Model.NotifyChanged(); else Model.EndBatch();
+    }
+
+    public void SetSelectedStroke(double stroke, bool isCoalesced = false)
+    {
+        if (Model.Selected is not { } selected || !selected.Tool.SupportsColor() || selected.Tool.IsRedactionTool()) return;
+        if (!isCoalesced) Model.BeginBatch();
+        selected.StrokeWidth = Math.Clamp(stroke, 0.002, 0.02);
+        if (isCoalesced) Model.NotifyChanged(); else Model.EndBatch();
+    }
+
+    public void SetSelectedColor(AnnotationColor color)
+    {
+        ActiveColor = color;
+        if (Model.Selected is not { } selected || !selected.Tool.SupportsColor()) return;
+        Model.BeginBatch();
+        selected.Color = color;
         Model.EndBatch();
     }
 

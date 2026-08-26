@@ -69,7 +69,7 @@ public sealed class AnnotationPresetStore
         {
         }
 
-        return BuiltIns(saved);
+        return BuiltIns(Sanitize(saved));
     }
 
     public void Save(List<AnnotationPreset> presets)
@@ -80,7 +80,32 @@ public sealed class AnnotationPresetStore
             Directory.CreateDirectory(directory);
         }
 
-        File.WriteAllText(_path, JsonSerializer.Serialize(presets, JsonOptions));
+        var saved = Sanitize(presets);
+        string temporaryPath = _path + ".tmp";
+        File.WriteAllText(temporaryPath, JsonSerializer.Serialize(saved, JsonOptions));
+        File.Move(temporaryPath, _path, overwrite: true);
+    }
+
+    private static List<AnnotationPreset> Sanitize(IEnumerable<AnnotationPreset> presets)
+    {
+        var result = new List<AnnotationPreset>();
+        var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var source in presets)
+        {
+            string name = source.Name?.Trim() ?? string.Empty;
+            if (name.Length > 48) name = name[..48];
+            if (string.IsNullOrWhiteSpace(name) || name is CurrentSettingsName or DefaultName || !names.Add(name)) continue;
+
+            result.Add(new AnnotationPreset
+            {
+                Name = name,
+                Tool = Enum.IsDefined(source.Tool) ? source.Tool : AnnotationTool.Rectangle,
+                ColorIndex = Math.Clamp(source.ColorIndex, -1, AnnotationColor.Palette.Count - 1),
+                StrokeWidth = source.StrokeWidth < 0 ? -1 : Math.Clamp(source.StrokeWidth, 0.002, 0.02),
+                Density = source.Density < 0 ? -1 : Math.Clamp(source.Density, 0.02, 1),
+            });
+        }
+        return result;
     }
 
     private static List<AnnotationPreset> BuiltIns(List<AnnotationPreset> saved)

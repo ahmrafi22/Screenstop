@@ -9,21 +9,21 @@
                  Workspace ground: AnnoTheme.neutralSolid dark (#292929 = white*0.16).
                  Accent/selection: tl color selection stroke, #3182ED.
                  Text: Apple label/secondaryLabel equivalents. -->
-            <SolidColorBrush x:Key="Sd.Bg" Color="#FF292929"/>
-            <SolidColorBrush x:Key="Sd.BgRaised" Color="#FF1E1E20"/>
-            <SolidColorBrush x:Key="Sd.Panel" Color="#FF38383A"/>
-            <SolidColorBrush x:Key="Sd.PanelHover" Color="#FF444446"/>
-            <SolidColorBrush x:Key="Sd.PanelPressed" Color="#FF505052"/>
-            <SolidColorBrush x:Key="Sd.Border" Color="#FF48484A"/>
-            <SolidColorBrush x:Key="Sd.BorderSoft" Color="#FF3A3A3C"/>
-            <SolidColorBrush x:Key="Sd.Text" Color="#FFF5F5F7"/>
-            <SolidColorBrush x:Key="Sd.TextMuted" Color="#FF98989D"/>
-            <SolidColorBrush x:Key="Sd.Accent" Color="#FF3182ED"/>
-            <SolidColorBrush x:Key="Sd.AccentHover" Color="#FF2873D6"/>
-            <SolidColorBrush x:Key="Sd.AccentPressed" Color="#FF2063BC"/>
-            <SolidColorBrush x:Key="Sd.AccentSoft" Color="#FF273E54"/>
+            <SolidColorBrush x:Key="Sd.Bg" Color="#FFF7F7F8"/>
+            <SolidColorBrush x:Key="Sd.BgRaised" Color="#FFFFFFFF"/>
+            <SolidColorBrush x:Key="Sd.Panel" Color="#FFF0F0F2"/>
+            <SolidColorBrush x:Key="Sd.PanelHover" Color="#FFE7E7EB"/>
+            <SolidColorBrush x:Key="Sd.PanelPressed" Color="#FFDDDEE3"/>
+            <SolidColorBrush x:Key="Sd.Border" Color="#FFE0E0E5"/>
+            <SolidColorBrush x:Key="Sd.BorderSoft" Color="#FFEBEBEF"/>
+            <SolidColorBrush x:Key="Sd.Text" Color="#FF29292E"/>
+            <SolidColorBrush x:Key="Sd.TextMuted" Color="#FF72727A"/>
+            <SolidColorBrush x:Key="Sd.Accent" Color="#FF3478F6"/>
+            <SolidColorBrush x:Key="Sd.AccentHover" Color="#FF2368E8"/>
+            <SolidColorBrush x:Key="Sd.AccentPressed" Color="#FF1557C9"/>
+            <SolidColorBrush x:Key="Sd.AccentSoft" Color="#FFE5EEFF"/>
 
-            <CornerRadius x:Key="Sd.Radius">6</CornerRadius>
+            <CornerRadius x:Key="Sd.Radius">8</CornerRadius>
             <Thickness x:Key="Sd.ButtonPadding">10,5,10,5</Thickness>
 
             <!-- Base chrome shared by every button/toggle template -->
@@ -169,6 +169,16 @@
                 <Setter Property="FontSize" Value="12"/>
             </Style>
 
+            <Style x:Key="Sd.ComboBox" TargetType="ComboBox">
+                <Setter Property="Background" Value="{StaticResource Sd.Panel}"/>
+                <Setter Property="Foreground" Value="{StaticResource Sd.Text}"/>
+                <Setter Property="BorderBrush" Value="{StaticResource Sd.Border}"/>
+                <Setter Property="BorderThickness" Value="1"/>
+                <Setter Property="Padding" Value="9,5,7,5"/>
+                <Setter Property="FontSize" Value="12"/>
+                <Setter Property="MinHeight" Value="30"/>
+            </Style>
+
             <!-- Checkbox with a drawn check so it reads on dark surfaces -->
             <Style TargetType="CheckBox">
                 <Setter Property="Foreground" Value="{StaticResource Sd.Text}"/>
@@ -276,15 +286,16 @@
                 </Setter>
             </Style>
 
-            <!-- Slider track/thumb tinted for dark surfaces -->
+            <!-- The track renders its real decrease/increase portions, so
+                 sliders stay usable with mouse, touch, and keys. -->
             <Style x:Key="Sd.SliderThumb" TargetType="Thumb">
                 <Setter Property="Template">
                     <Setter.Value>
                         <ControlTemplate TargetType="Thumb">
-                            <Ellipse Width="13" Height="13"
-                                     Fill="{StaticResource Sd.Text}"
+                            <Ellipse Width="14" Height="14"
+                                     Fill="{StaticResource Sd.BgRaised}"
                                      Stroke="{StaticResource Sd.Accent}"
-                                     StrokeThickness="2"/>
+                                     StrokeThickness="2.5"/>
                         </ControlTemplate>
                     </Setter.Value>
                 </Setter>
@@ -295,25 +306,21 @@
                     <Setter.Value>
                         <ControlTemplate TargetType="Slider">
                             <Grid VerticalAlignment="Center">
-                                <Border Height="4"
-                                        CornerRadius="2"
-                                        Background="{StaticResource Sd.Border}"
-                                        VerticalAlignment="Center"/>
                                 <Track x:Name="PART_Track">
                                     <Track.DecreaseRepeatButton>
-                                        <RepeatButton Command="Slider.DecreaseLarge" Opacity="0">
+                                        <RepeatButton Command="Slider.DecreaseLarge">
                                             <RepeatButton.Template>
                                                 <ControlTemplate TargetType="RepeatButton">
-                                                    <Rectangle Fill="Transparent" Height="10"/>
+                                                    <Border Height="6" CornerRadius="3" Background="{StaticResource Sd.Accent}"/>
                                                 </ControlTemplate>
                                             </RepeatButton.Template>
                                         </RepeatButton>
                                     </Track.DecreaseRepeatButton>
                                     <Track.IncreaseRepeatButton>
-                                        <RepeatButton Command="Slider.IncreaseLarge" Opacity="0">
+                                        <RepeatButton Command="Slider.IncreaseLarge">
                                             <RepeatButton.Template>
                                                 <ControlTemplate TargetType="RepeatButton">
-                                                    <Rectangle Fill="Transparent" Height="10"/>
+                                                    <Border Height="6" CornerRadius="3" Background="{StaticResource Sd.Border}"/>
                                                 </ControlTemplate>
                                             </RepeatButton.Template>
                                         </RepeatButton>
