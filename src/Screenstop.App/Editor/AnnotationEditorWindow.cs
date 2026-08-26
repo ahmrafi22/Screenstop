@@ -26,11 +26,7 @@ internal sealed class AnnotationEditorWindow : Window
     private NormalizedPoint _textAnchor;
     private bool _textSessionActive;
 
-    /// When true, Save overwrites the source image in place (preview-card
-    /// flow) instead of prompting for a destination.
-    public bool SaveInPlace { get; set; }
-
-    /// Raised after a successful save with the output path.
+    /// Raised after edits are saved to the sidecar, with the image path.
     public event Action<string>? Saved;
 
     public AnnotationEditorWindow(string imagePath)
@@ -47,6 +43,11 @@ internal sealed class AnnotationEditorWindow : Window
         if (!File.Exists(imagePath) || !_canvas.LoadImage(imagePath))
         {
             MessageBox.Show(this, "The image could not be loaded.", "Screenstop", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+        else
+        {
+            // Non-destructive: resume any previous edits stored in the sidecar.
+            _canvas.Model.Load(AnnotationDocument.Load(imagePath));
         }
 
         _undoButton = MakeButton("Undo", OnUndo);
@@ -70,6 +71,10 @@ internal sealed class AnnotationEditorWindow : Window
         saveButton.FontWeight = FontWeights.Bold;
         saveButton.Margin = new Thickness(12, 0, 0, 0);
         toolbar.Children.Add(saveButton);
+
+        var exportButton = MakeButton("Export…", OnExport);
+        exportButton.Margin = new Thickness(6, 0, 0, 0);
+        toolbar.Children.Add(exportButton);
 
         var closeButton = MakeButton("Close", (_, _) => Close());
         closeButton.Margin = new Thickness(6, 0, 0, 0);
@@ -333,7 +338,32 @@ internal sealed class AnnotationEditorWindow : Window
         }
     }
 
+    /// Saves the edits non-destructively: the annotation document goes to the
+    /// `.screenstop` sidecar; the captured image itself is never touched.
     private void OnSave(object sender, RoutedEventArgs e)
+    {
+        CommitTextSession();
+
+        if (_canvas.FullBitmap is null)
+        {
+            return;
+        }
+
+        try
+        {
+            _canvas.Model.ToDocument().Save(_sourcePath);
+            Saved?.Invoke(_sourcePath);
+            Close();
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(this, $"Could not save the edits: {ex.Message}", "Screenstop", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+    }
+
+    /// Exports a flattened copy (image + annotations baked in) to a location
+    /// the user chooses. The original capture and its sidecar stay intact.
+    private void OnExport(object sender, RoutedEventArgs e)
     {
         CommitTextSession();
 
@@ -346,26 +376,30 @@ internal sealed class AnnotationEditorWindow : Window
         {
             byte[] bytes = EncodePng();
 
-            string? path;
-            if (SaveInPlace)
+            var dialog = new Microsoft.Win32.SaveFileDialog
             {
-                WriteAtomic(_sourcePath, bytes);
-                path = _sourcePath;
-            }
-            else
+                Title = "Export annotated image",
+                Filter = "PNG image|*.png",
+                FileName = $"screenstop-{DateTime.Now:yyyyMMdd-HHmmss}.png",
+            };
+
+            if (dialog.ShowDialog(this) != true)
             {
-                path = SaveDialog(bytes);
+                return;
             }
 
-            if (path is not null)
-            {
-                Saved?.Invoke(path);
-                Close();
-            }
+            File.WriteAllBytes(dialog.FileName, bytes);
+
+            // Keep the edits with the export too, so re-opening it resumes
+            // where the user left off.
+            _canvas.Model.ToDocument().Save(dialog.FileName);
+
+            Saved?.Invoke(dialog.FileName);
+            Close();
         }
         catch (Exception ex)
         {
-            MessageBox.Show(this, $"Could not save the image: {ex.Message}", "Screenstop", MessageBoxButton.OK, MessageBoxImage.Warning);
+            MessageBox.Show(this, $"Could not export the image: {ex.Message}", "Screenstop", MessageBoxButton.OK, MessageBoxImage.Warning);
         }
     }
 
@@ -376,48 +410,5 @@ internal sealed class AnnotationEditorWindow : Window
         using var stream = new MemoryStream();
         data.SaveTo(stream);
         return stream.ToArray();
-    }
-
-    /// Writes via a temp file + rename so a failure mid-write never leaves a
-    /// corrupt image at the destination.
-    private static void WriteAtomic(string destination, byte[] bytes)
-    {
-        string temp = destination + ".tmp";
-        File.WriteAllBytes(temp, bytes);
-        try
-        {
-            File.Move(temp, destination, overwrite: true);
-        }
-        catch
-        {
-            try
-            {
-                File.Delete(temp);
-            }
-            catch
-            {
-                // best effort
-            }
-
-            throw;
-        }
-    }
-
-    private string? SaveDialog(byte[] bytes)
-    {
-        var dialog = new Microsoft.Win32.SaveFileDialog
-        {
-            Title = "Save annotated image",
-            Filter = "PNG image|*.png",
-            FileName = $"screenstop-{DateTime.Now:yyyyMMdd-HHmmss}.png",
-        };
-
-        if (dialog.ShowDialog(this) != true)
-        {
-            return null;
-        }
-
-        File.WriteAllBytes(dialog.FileName, bytes);
-        return dialog.FileName;
     }
 }

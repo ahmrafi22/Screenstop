@@ -3,6 +3,8 @@ using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
+using Screenstop.Core.Annotations;
+using Screenstop.Rendering;
 using SkiaSharp;
 
 namespace Screenstop.App.Preview;
@@ -15,6 +17,34 @@ internal static class BitmapSourceConverter
         {
             using var bitmap = DecodeDownsampled(path, maxDimension);
             return bitmap is null ? null : ToBitmapSource(bitmap);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    /// Like FromFile, but applies the image's annotation sidecar (if any) so
+    /// the card thumbnail reflects the user's edits. Composites at thumbnail
+    /// resolution - normalized coordinates make that safe and cheap.
+    public static BitmapSource? FromFileComposited(string path, int maxDimension)
+    {
+        try
+        {
+            using var bitmap = DecodeDownsampled(path, maxDimension);
+            if (bitmap is null)
+            {
+                return null;
+            }
+
+            var document = AnnotationDocument.Load(path);
+            if (document is null || document.Annotations.Count == 0)
+            {
+                return ToBitmapSource(bitmap);
+            }
+
+            using var composited = AnnotationRenderer.Render(bitmap, document);
+            return ToBitmapSource(composited);
         }
         catch
         {
