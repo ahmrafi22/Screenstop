@@ -108,6 +108,12 @@ internal sealed class AnnotationCanvas : SKElement
 
     public double ActiveFontSize { get; set; } = 0.03;
 
+    /// Redaction strength applied to new pixelate/blur annotations (mac inspector default 23%).
+    public double ActiveDensity { get; set; } = 0.23;
+
+    /// Raised when the active tool changes (sidebar refresh hook).
+    public event Action? ToolChanged;
+
     public bool HasImage => _fullBitmap is not null;
 
     public SKBitmap? FullBitmap => _fullBitmap;
@@ -158,7 +164,35 @@ internal sealed class AnnotationCanvas : SKElement
         }
 
         Cursor = tool == AnnotationTool.Select ? Cursors.Arrow : Cursors.Cross;
+        ToolChanged?.Invoke();
         InvalidateVisual();
+    }
+
+    /// Applies an updated strength to the selected redaction annotation as
+    /// one undo step. No-op unless a pixelate/blur annotation is selected.
+    public void SetSelectedDensity(double density)
+    {
+        if (Model.Selected is not { } selected || !selected.Tool.IsRedactionTool())
+        {
+            return;
+        }
+
+        Model.BeginBatch();
+        selected.Density = Math.Clamp(density, 0.02, 1);
+        Model.EndBatch();
+    }
+
+    /// Applies a font size to the selected text annotation as one undo step.
+    public void SetSelectedFontSize(double fontSize)
+    {
+        if (Model.Selected is not { } selected || selected.Tool != AnnotationTool.Text)
+        {
+            return;
+        }
+
+        Model.BeginBatch();
+        selected.FontSize = Math.Clamp(fontSize, 0.008, 0.12);
+        Model.EndBatch();
     }
 
     /// Commits a text annotation anchored at the given normalized point.
@@ -278,6 +312,10 @@ internal sealed class AnnotationCanvas : SKElement
             StrokeWidth = ActiveStroke,
             FontSize = ActiveFontSize,
         };
+        if (ActiveTool.IsRedactionTool())
+        {
+            _draft.Density = ActiveDensity;
+        }
         if (ActiveTool.UsesEndPoints())
         {
             _draft.Start = norm;

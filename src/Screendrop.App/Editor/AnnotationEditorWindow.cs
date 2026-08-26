@@ -35,6 +35,7 @@ internal sealed class AnnotationEditorWindow : Window
     };
     private readonly Grid _canvasHost = new();
     private readonly Dictionary<AnnotationTool, ToggleButton> _toolToggles = new();
+    private readonly EditorSidebar _sidebar;
     private readonly TextBlock _cropLabel = new()
     {
         Foreground = FindAppBrush("Sd.Text"),
@@ -163,10 +164,19 @@ internal sealed class AnnotationEditorWindow : Window
         _canvasHost.Children.Add(hintChip);
         _canvasHost.Children.Add(_cropConfirmBar);
 
+        // Keep the top toolbar in sync when the sidebar picks a tool.
+        _sidebar = new EditorSidebar(_canvas, new AnnotationPresetStore());
+        _sidebar.ToolPicked += ActivateTool;
+
+        var body = new DockPanel { LastChildFill = true };
+        DockPanel.SetDock(_sidebar, Dock.Right);
+        body.Children.Add(_sidebar);
+        body.Children.Add(_canvasHost);
+
         var root = new DockPanel();
         DockPanel.SetDock(toolbar, Dock.Top);
         root.Children.Add(toolbar);
-        root.Children.Add(_canvasHost);
+        root.Children.Add(body);
         Content = root;
 
         _canvas.TextSessionRequested += OpenTextSession;
