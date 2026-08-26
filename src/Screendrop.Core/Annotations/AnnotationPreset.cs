@@ -94,7 +94,7 @@ public sealed class AnnotationPresetStore
         {
             Name = DefaultName,
             Tool = AnnotationTool.Rectangle,
-            ColorIndex = 5, // Red in the mac-ordered palette
+            ColorIndex = 1, // Red in the mac-ordered palette
             Density = 0.23,
         });
         return result;
