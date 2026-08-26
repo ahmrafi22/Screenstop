@@ -415,12 +415,22 @@ Live status board. Update as phases complete; keep §5 acceptance text authorita
       panel Save, and panel Copy all export the composited image;
       discard/eviction clean up the sidecar with the staged PNG.
 
-### Phase 7 — Settings, polish, packaging ⬜
-- [ ] Prefs tabs parity (General/Screenshots/Hotkeys/About)
-- [ ] Launch-at-login registry Run key
-- [ ] Crash log
-- [ ] Inno Setup installer + icon set
-- [ ] Clean install/uninstall/reinstall QA
+### Phase 7 — Settings, polish, packaging ✅ (2026-08-26; manual QA open)
+- [x] Prefs tabs parity (General/Screenshots/Hotkeys/About) — `SettingsWindow`
+      opened from the tray menu; edits apply atomically on Save (JSON persisted,
+      launch-at-login toggled, hotkeys re-registered in place with conflict toasts).
+- [x] Launch-at-login registry Run key — per-user `HKCU\...\Run\Screendrop`,
+      quoted-path command builder unit-tested; installer cleans the key on uninstall.
+- [x] Crash log — `CrashReport` (Core, pure + unit-tested) written to
+      `%APPDATA%\Screendrop\crashes` from the dispatcher/appdomain/unobserved-task
+      handlers; survives disk cleanup unlike the %TEMP% trace log.
+- [x] Inno Setup installer + icon set — per-user install (no UAC), Start Menu +
+      optional desktop shortcut, uninstall preserves settings/crash reports;
+      `installer/build-installer.ps1` publishes + compiles (ISCC verified,
+      `Screendrop-Setup-1.0.0.exe` 9.4 MB produced). App icon set already shipped
+      in Phase 0 (`Assets/screendrop.ico`).
+- [ ] Clean install/uninstall/reinstall QA — needs an unlocked desktop
+      (silent-install test was blocked in this session); checklist in docs/QA.md.
 
 ### Build progress log
 - **2026-08-24 P0**: scaffold, tray, mutex, manifest, build.ps1. `1264bdf`
@@ -444,3 +454,5 @@ Live status board. Update as phases complete; keep §5 acceptance text authorita
 - **2026-08-26 audit**: Phases 0–4 audited against the mac app. Panel file-cleanup + keep-on-failure semantics (`45b1501`), panel placed on the capture's monitor (`33d077b`), area pipeline off the UI thread (`8edb4e2`), direct GDI→SkiaSharp readback + sampled flat-frame check (`14e907a`), aspect-fit toast thumbnail (`4b890ea`), SKCodec downsampled card thumbnails (`90f3598`). 52/52 tests green throughout.
 - **2026-08-26 P5**: annotation model in Core (normalized document, editor state, snapshot undo/redo) `6153fb2`; SkiaSharp renderer for all 8 tools `eab86f6`; interactive editor window wired to the preview card Edit action `5fc65f7`; region-crop test race fix `1885632`. 82/82 tests green.
 - **2026-08-26 P6**: automated preview-vs-export parity tests (6 tools at 240px vs 960px) `abb7d2f`; non-destructive sidecar export helper + round-trip tests `b75e5a7`; editor Save→sidecar / Export→flattened PNG, composited thumbnails + Save/Copy, sidecar cleanup on discard `34c4811`; clipboard integration test made contention-resilient. **Phase 6 complete.** 97/97 tests green.
+- **2026-08-26 scope**: sharing/uploading removed from Windows scope `e0e7130` — it was only ever deferred plan text (no code); captures are local-only.
+- **2026-08-26 P7**: crash log (`CrashReport` pure Core + writer, wired into all three exception handlers) `2d7fe85`; launch-at-login Run key toggle `9d58c77`; user-configurable hotkeys (`HotkeyCombo` parse/format + settings normalization + in-place `Reload`) `e42eee8`; settings window (General/Screenshots/Hotkeys/About tabs, key-capture recorder boxes, atomic apply) `1a3e6be`; Inno Setup per-user installer + build script, ISCC-verified `7463973`. **Phase 7 complete** (manual install QA open). 138/138 tests green.
