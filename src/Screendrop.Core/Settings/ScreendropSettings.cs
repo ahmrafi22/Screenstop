@@ -21,6 +21,14 @@ public sealed class ScreendropSettings
 
     public string FileNamePattern { get; set; } = DefaultFileNamePattern;
 
+    public bool LaunchAtLogin { get; set; }
+
+    public string FullscreenHotkey { get; set; } = HotkeyCombo.DefaultFullscreen;
+
+    public string WindowHotkey { get; set; } = HotkeyCombo.DefaultWindow;
+
+    public string AreaHotkey { get; set; } = HotkeyCombo.DefaultArea;
+
     public void Normalize()
     {
         Version = Math.Max(Version, 1);
@@ -29,5 +37,31 @@ public sealed class ScreendropSettings
         {
             FileNamePattern = DefaultFileNamePattern;
         }
+
+        FullscreenHotkey = NormalizeHotkey(FullscreenHotkey, HotkeyCombo.DefaultFullscreen);
+        WindowHotkey = NormalizeHotkey(WindowHotkey, HotkeyCombo.DefaultWindow);
+        AreaHotkey = NormalizeHotkey(AreaHotkey, HotkeyCombo.DefaultArea);
+
+        // Two modes bound to the same combo can never both register; the
+        // later one falls back to its default so every mode keeps a hotkey.
+        if (WindowHotkey == FullscreenHotkey)
+        {
+            WindowHotkey = HotkeyCombo.DefaultWindow;
+        }
+
+        if (AreaHotkey == FullscreenHotkey || AreaHotkey == WindowHotkey)
+        {
+            AreaHotkey = HotkeyCombo.DefaultArea;
+        }
+    }
+
+    private static string NormalizeHotkey(string? value, string fallback)
+    {
+        if (HotkeyCombo.TryParse(value, out var combo) && combo.HasModifier)
+        {
+            return combo.Format();
+        }
+
+        return fallback;
     }
 }
