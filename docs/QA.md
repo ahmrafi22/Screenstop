@@ -2,6 +2,30 @@
 
 Manual verification per phase. Check items off as verified.
 
+## Audit — Phases 0–4 vs. mac parity (2026-08-26)
+
+Automated (all green, 52/52 xUnit):
+
+- [x] Discard/eviction delete the staged temp PNG; saved exports untouched
+- [x] Save/Copy keep the card on failure (retry), dismiss only on success
+- [x] Panel Save uses the capture's timestamp in the filename
+- [x] Panel placed on the capture's monitor (origin threaded through the pipeline)
+- [x] Area crop + pipeline run off the UI thread
+- [x] GDI readback writes directly into the SKBitmap buffer (no double copy)
+- [x] Flat-frame detection samples 8 scanlines with early exit
+- [x] Toast thumbnail aspect-fit inside the 32×32 icon canvas
+- [x] Card thumbnails decode via SKCodec scaled target (PNG falls back safely)
+- [x] `PreviewStack.Evicted` coverage (eviction raises, remove does not)
+
+Manual (needs an unlocked desktop):
+
+- [ ] Discard a card → no orphaned `.png` left in `%TEMP%\Screenstop`
+- [ ] 7 captures → oldest card's staging file is deleted on eviction
+- [ ] Capture on a secondary monitor → panel appears on that monitor
+- [ ] Toast thumbnail shows the capture without distortion
+- [ ] UWP apps (Calculator, Photos) remain absent from the window picker
+      (documented limitation — PrintWindow cannot composite them)
+
 ## Phase 4 — Preview panel ✅ (automated) / manual items open
 
 Automated (all green):
