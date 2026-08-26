@@ -7,8 +7,10 @@ using Screendrop.App.Capture;
 using Screendrop.App.Hotkeys;
 using Screendrop.App.Infrastructure;
 using Screendrop.App.Preview;
+using Screendrop.App.Settings;
 using Screendrop.App.Tray;
 using Screendrop.Core.Diagnostics;
+using Screendrop.Core.Settings;
 
 namespace Screendrop.App;
 
@@ -47,7 +49,7 @@ public partial class App : Application
         base.OnStartup(e);
 
         _tray = new TrayController();
-        _tray.Initialize();
+        _tray.Initialize(OpenSettings);
 
         _preview = new PreviewPanelPresenter(_tray.Notify);
         _coordinator = new CaptureCoordinator(_tray.Notify, _preview.OnCapture);
@@ -101,6 +103,42 @@ public partial class App : Application
         TraceLog.Write($"unhandled ui exception: {e.Exception}");
         WriteCrashReport(e.Exception, isTerminating: false);
         e.Handled = true;
+    }
+
+    private SettingsWindow? _settingsWindow;
+
+    private void OpenSettings()
+    {
+        if (_settingsWindow is { IsLoaded: true })
+        {
+            _settingsWindow.Activate();
+            return;
+        }
+
+        var settings = SettingsStore.Load();
+        _settingsWindow = new SettingsWindow(settings, ApplySettings);
+        _settingsWindow.Closed += (_, _) => _settingsWindow = null;
+        _settingsWindow.Show();
+        _settingsWindow.Activate();
+    }
+
+    private void ApplySettings(ScreendropSettings settings)
+    {
+        settings.Normalize();
+        SettingsStore.Save(settings);
+        TraceLog.Write("settings saved from settings window");
+
+        LaunchAtLogin.SetEnabled(settings.LaunchAtLogin);
+
+        if (_hotkeys is not null)
+        {
+            _hotkeys.Reload(out var conflicts);
+            if (conflicts.Count > 0)
+            {
+                string combos = string.Join(", ", conflicts.Select(HotkeyService.Describe));
+                _tray?.Notify("Hotkey conflict", $"{combos} could not be registered and are ignored.");
+            }
+        }
     }
 
     private static void WriteCrashReport(Exception? exception, bool isTerminating)

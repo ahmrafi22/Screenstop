@@ -18,13 +18,13 @@ internal sealed class TrayController : IDisposable
 
     private TaskbarIcon? _icon;
 
-    public void Initialize()
+    public void Initialize(Action? openSettings = null)
     {
         var icon = new TaskbarIcon
         {
             ToolTipText = "Screendrop",
             IconSource = BitmapFrame.Create(new Uri(IconUri, UriKind.Absolute)),
-            ContextMenu = BuildMenu(),
+            ContextMenu = BuildMenu(openSettings),
             Visibility = Visibility.Visible,
         };
 
@@ -33,9 +33,17 @@ internal sealed class TrayController : IDisposable
         _icon = icon;
     }
 
-    private static ContextMenu BuildMenu()
+    private static ContextMenu BuildMenu(Action? openSettings)
     {
         var menu = new ContextMenu();
+
+        if (openSettings is not null)
+        {
+            var settings = new MenuItem { Header = "Settings…" };
+            settings.Click += (_, _) => openSettings();
+            menu.Items.Add(settings);
+            menu.Items.Add(new Separator());
+        }
 
         var quit = new MenuItem { Header = "Quit Screendrop" };
         quit.Click += (_, _) => Application.Current.Shutdown();
