@@ -17,6 +17,22 @@ public static class AnnotationRenderer
     private const double BlurFeatherFactor = 0.12;
     private const byte HighlightAlpha = 110;
 
+    /// <summary>
+    /// Maps the inspector's redaction strength (0..1, default 0.23) to a
+    /// multiplier on the pixel block size / blur sigma. Unset (-1, legacy
+    /// sidecars) keeps the pre-density default exactly.
+    /// </summary>
+    private static double DensityScale(double density)
+    {
+        if (density < 0)
+        {
+            return 1.0;
+        }
+
+        double clamped = Math.Clamp(density, 0.02, 1);
+        return 0.25 + (clamped * 3.75); // 23% ≈ 1.11×, 100% = 4×
+    }
+
     /// Renders the source image with all annotations at full resolution.
     public static SKBitmap Render(SKBitmap source, AnnotationDocument document)
     {
@@ -326,7 +342,7 @@ public static class AnnotationRenderer
             return;
         }
 
-        int block = (int)Math.Clamp(Math.Round(PixelateBlockFactor * maxDim), 4, 64);
+        int block = (int)Math.Clamp(Math.Round(PixelateBlockFactor * maxDim * DensityScale(a.Density)), 2, 96);
         int rx = (int)Math.Floor(region.Left);
         int ry = (int)Math.Floor(region.Top);
         int rw = (int)Math.Ceiling(region.Width);
@@ -358,7 +374,7 @@ public static class AnnotationRenderer
             return;
         }
 
-        float sigma = (float)Math.Max(2, BlurSigmaFactor * maxDim);
+        float sigma = (float)Math.Max(1.5, BlurSigmaFactor * maxDim * DensityScale(a.Density));
         float feather = (float)Math.Max(4, Math.Min(region.Width, region.Height) * BlurFeatherFactor);
 
         // Pad the region so the blur has real pixels to sample at its edges,

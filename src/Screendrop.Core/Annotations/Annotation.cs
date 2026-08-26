@@ -36,6 +36,13 @@ public sealed class Annotation
     /// 1-based marker index for NumberedCircle, assigned by the editor.
     public int Number { get; set; }
 
+    /// <summary>
+    /// Redaction intensity for pixelate/blur (mac inspector "Strength",
+    /// default 23%). 0..1; negative means unset (legacy sidecars) and the
+    /// renderer falls back to the pre-density default.
+    /// </summary>
+    public double Density { get; set; } = -1;
+
     public Annotation Clone() => new()
     {
         Id = Id,
@@ -49,6 +56,7 @@ public sealed class Annotation
         Text = Text,
         FontSize = FontSize,
         Number = Number,
+        Density = Density,
     };
 
     /// The annotation's bounding box in normalized space.
