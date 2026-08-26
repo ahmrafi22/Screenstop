@@ -402,9 +402,11 @@ Live status board. Update as phases complete; keep §5 acceptance text authorita
       through the shared `AnnotationRenderer` so preview == export.
 - [x] Tools: rect, ellipse, arrow, freehand, text (inline box), numbered
       circles, pixelate, blur — all draw/select/move/undo.
-- [ ] Zoom/pan stable at 4K images — deferred: the canvas fits the image to
-      the window (downscaled preview, full-res export); interactive zoom/pan
-      is a follow-up.
+- [x] Zoom/pan stable at 4K images — `ZoomPanTransform` (Core, pure, 11 unit
+      tests incl. 20-step zoom stability) drives the canvas mapping: wheel
+      zooms at the cursor (1x–8x), middle-drag pans with on-screen clamping,
+      the preview rebuilds at display resolution for crisp zoomed views, and
+      toolbar −/%/+/Fit controls + Ctrl++/Ctrl+−/Ctrl+0 shortcuts round it out.
 
 ### Phase 6 — Export renderer + integration ✅ (2026-08-26)
 - [x] Full-res compositing incl. pixelate & blur parity — automated
@@ -456,3 +458,4 @@ Live status board. Update as phases complete; keep §5 acceptance text authorita
 - **2026-08-26 P6**: automated preview-vs-export parity tests (6 tools at 240px vs 960px) `abb7d2f`; non-destructive sidecar export helper + round-trip tests `b75e5a7`; editor Save→sidecar / Export→flattened PNG, composited thumbnails + Save/Copy, sidecar cleanup on discard `34c4811`; clipboard integration test made contention-resilient. **Phase 6 complete.** 97/97 tests green.
 - **2026-08-26 scope**: sharing/uploading removed from Windows scope `e0e7130` — it was only ever deferred plan text (no code); captures are local-only.
 - **2026-08-26 P7**: crash log (`CrashReport` pure Core + writer, wired into all three exception handlers) `2d7fe85`; launch-at-login Run key toggle `9d58c77`; user-configurable hotkeys (`HotkeyCombo` parse/format + settings normalization + in-place `Reload`) `e42eee8`; settings window (General/Screenshots/Hotkeys/About tabs, key-capture recorder boxes, atomic apply) `1a3e6be`; Inno Setup per-user installer + build script, ISCC-verified `7463973`. **Phase 7 complete** (manual install QA open). 138/138 tests green.
+- **2026-08-26 zoom/pan**: `ZoomPanTransform` pure Core transform with 11 unit tests `9ff76d6` (plus removal of an unused `Viewport` draft swept in by mistake `9802342`); canvas wheel-zoom at cursor, middle-drag pan, display-resolution preview rebuild, toolbar zoom controls + shortcuts `b5f8dcc`. Closes the last open Phase 5 acceptance item. 149/149 tests green.
