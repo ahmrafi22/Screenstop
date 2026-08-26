@@ -213,7 +213,7 @@ internal sealed class AnnotationCanvas : SKElement
             StrokeWidth = ActiveStroke,
             FontSize = ActiveFontSize,
         };
-        if (ActiveTool == AnnotationTool.Arrow)
+        if (ActiveTool.UsesEndPoints())
         {
             _draft.Start = norm;
             _draft.End = norm;
@@ -250,7 +250,7 @@ internal sealed class AnnotationCanvas : SKElement
         switch (_mode)
         {
             case DragMode.Drawing when _draft is not null:
-                if (_draft.Tool == AnnotationTool.Arrow)
+                if (_draft.Tool.UsesEndPoints())
                 {
                     _draft.End = norm;
                 }
@@ -429,7 +429,7 @@ internal sealed class AnnotationCanvas : SKElement
 
         if (selected is not null)
         {
-            if (selected.Tool == AnnotationTool.Arrow)
+            if (selected.Tool.UsesEndPoints())
             {
                 if (NearPoint(norm, selected.Start, tolerance))
                 {
@@ -483,7 +483,8 @@ internal sealed class AnnotationCanvas : SKElement
         if (!isClick)
         {
             if (_draft.Tool is AnnotationTool.Rectangle or AnnotationTool.Ellipse
-                or AnnotationTool.Pixelate or AnnotationTool.Blur or AnnotationTool.NumberedCircle)
+                or AnnotationTool.Pixelate or AnnotationTool.Blur or AnnotationTool.NumberedCircle
+                or AnnotationTool.Highlight or AnnotationTool.FilledRectangle)
             {
                 _draft.Rect = _draft.Rect.ClampToUnit();
             }
@@ -629,7 +630,7 @@ internal sealed class AnnotationCanvas : SKElement
             IsAntialias = true,
         };
 
-        if (selected.Tool == AnnotationTool.Arrow)
+        if (selected.Tool.UsesEndPoints())
         {
             foreach (var p in new[] { selected.Start, selected.End })
             {

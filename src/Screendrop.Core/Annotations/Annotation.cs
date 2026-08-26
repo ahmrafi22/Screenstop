@@ -57,6 +57,7 @@ public sealed class Annotation
         switch (Tool)
         {
             case AnnotationTool.Arrow:
+            case AnnotationTool.Line:
                 return NormalizedRect.FromPoints(Start.X, Start.Y, End.X, End.Y);
 
             case AnnotationTool.Freehand:
@@ -89,6 +90,7 @@ public sealed class Annotation
         switch (Tool)
         {
             case AnnotationTool.Arrow:
+            case AnnotationTool.Line:
                 return DistanceToSegment(nx, ny, Start, End) <= Math.Max(tolerance, StrokeWidth);
 
             case AnnotationTool.Freehand:
