@@ -17,6 +17,9 @@ public sealed class AnnotationEditorModel
 
     public event Action? Changed;
 
+    /// <summary>Refreshes renderers during a coalesced UI edit.</summary>
+    public void NotifyChanged() => Changed?.Invoke();
+
     public IReadOnlyList<Annotation> Annotations => _annotations;
 
     public bool CanUndo => _undo.Count > 0;

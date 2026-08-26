@@ -74,4 +74,22 @@ public class AnnotationPresetStoreTests : IDisposable
         Assert.InRange(defaultPreset.ColorIndex, 0, AnnotationColor.Palette.Count - 1);
         Assert.Equal(AnnotationColor.Red, AnnotationColor.Palette[defaultPreset.ColorIndex]);
     }
+
+    [Fact]
+    public void Save_sanitizes_duplicate_names_and_out_of_range_style_values()
+    {
+        _store.Save(new List<AnnotationPreset>
+        {
+            new() { Name = "  Review  ", Tool = (AnnotationTool)999, ColorIndex = 999, StrokeWidth = 9, Density = 9 },
+            new() { Name = "review", Tool = AnnotationTool.Text, ColorIndex = 2, StrokeWidth = 0.004, Density = 0.4 },
+            new() { Name = AnnotationPresetStore.DefaultName, Tool = AnnotationTool.Blur },
+        });
+
+        var preset = Assert.Single(_store.Load(), p => p.Name == "Review");
+
+        Assert.Equal(AnnotationTool.Rectangle, preset.Tool);
+        Assert.Equal(AnnotationColor.Palette.Count - 1, preset.ColorIndex);
+        Assert.Equal(0.02, preset.StrokeWidth, 6);
+        Assert.Equal(1, preset.Density, 6);
+    }
 }
