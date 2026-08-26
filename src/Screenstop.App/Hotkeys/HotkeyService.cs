@@ -1,6 +1,7 @@
 using System.Runtime.InteropServices;
 using System.Windows.Interop;
 using Screenstop.App.Infrastructure;
+using Screenstop.Core.Settings;
 
 namespace Screenstop.App.Hotkeys;
 
@@ -8,14 +9,9 @@ public sealed class HotkeyService : IDisposable
 {
     private const int WmHotkey = 0x0312;
     private const uint ModAlt = 0x0001;
+    private const uint ModControl = 0x0002;
     private const uint ModShift = 0x0004;
-
-    private static readonly (CaptureMode Mode, uint VirtualKey)[] Defaults =
-    {
-        (CaptureMode.Fullscreen, 0x31),
-        (CaptureMode.Window, 0x32),
-        (CaptureMode.Area, 0x33),
-    };
+    private const uint ModWin = 0x0008;
 
     private readonly HwndSource _source;
     private readonly Dictionary<CaptureMode, int> _registered = new();
@@ -30,13 +26,16 @@ public sealed class HotkeyService : IDisposable
 
     public static string Describe(CaptureMode mode)
     {
-        return mode switch
+        var settings = SettingsStore.Load();
+        var text = mode switch
         {
-            CaptureMode.Fullscreen => "Alt+Shift+1",
-            CaptureMode.Window => "Alt+Shift+2",
-            CaptureMode.Area => "Alt+Shift+3",
-            _ => $"Alt+Shift+{(int)mode}",
+            CaptureMode.Fullscreen => settings.FullscreenHotkey,
+            CaptureMode.Window => settings.WindowHotkey,
+            CaptureMode.Area => settings.AreaHotkey,
+            _ => null,
         };
+
+        return text ?? $"Alt+Shift+{(int)mode}";
     }
 
     public static HotkeyService Start(out IReadOnlyList<CaptureMode> conflicts)
@@ -52,27 +51,66 @@ public sealed class HotkeyService : IDisposable
         };
 
         var service = new HotkeyService(new HwndSource(parameters));
+        TraceLog.Write($"hotkey window handle={service._source.Handle}");
+        service.Reload(out conflicts);
+        return service;
+    }
+
+    /// <summary>
+    /// Re-reads hotkey bindings from settings and re-registers them in place
+    /// (same message window). Used after the settings window saves changes,
+    /// so new combos take effect without restarting the app.
+    /// </summary>
+    public void Reload(out IReadOnlyList<CaptureMode> conflicts)
+    {
+        foreach (int id in _registered.Values)
+        {
+            UnregisterHotKey(_source.Handle, id);
+        }
+
+        _registered.Clear();
+
         var failed = new List<CaptureMode>();
 
-        TraceLog.Write($"hotkey window handle={service._source.Handle}");
-
-        foreach (var (mode, virtualKey) in Defaults)
+        var settings = SettingsStore.Load();
+        var bindings = new (CaptureMode Mode, string Combo)[]
         {
-            int id = (int)mode;
-            if (RegisterHotKey(service._source.Handle, id, ModAlt | ModShift, virtualKey))
+            (CaptureMode.Fullscreen, settings.FullscreenHotkey),
+            (CaptureMode.Window, settings.WindowHotkey),
+            (CaptureMode.Area, settings.AreaHotkey),
+        };
+
+        foreach (var (mode, comboText) in bindings)
+        {
+            if (!HotkeyCombo.TryParse(comboText, out var combo))
             {
-                service._registered.Add(mode, id);
-                TraceLog.Write($"registered {mode} vk=0x{virtualKey:X}");
+                // Normalize() already guarantees parseable combos; this is a
+                // belt-and-braces guard against a hand-edited settings file.
+                failed.Add(mode);
+                TraceLog.Write($"unparseable hotkey {mode} '{comboText}'");
+                continue;
+            }
+
+            uint modifiers = 0;
+            if (combo.Alt) modifiers |= ModAlt;
+            if (combo.Control) modifiers |= ModControl;
+            if (combo.Shift) modifiers |= ModShift;
+            if (combo.Windows) modifiers |= ModWin;
+
+            int id = (int)mode;
+            if (RegisterHotKey(_source.Handle, id, modifiers, (uint)combo.VirtualKey))
+            {
+                _registered.Add(mode, id);
+                TraceLog.Write($"registered {mode} {combo.Format()}");
             }
             else
             {
                 failed.Add(mode);
-                TraceLog.Write($"conflict {mode} vk=0x{virtualKey:X} error={Marshal.GetLastWin32Error()}");
+                TraceLog.Write($"conflict {mode} {combo.Format()} error={Marshal.GetLastWin32Error()}");
             }
         }
 
         conflicts = failed;
-        return service;
     }
 
     private IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
