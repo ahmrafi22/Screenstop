@@ -2,6 +2,54 @@
 
 Manual verification per phase (see PLAN.md §5 and §7). Check items off as verified.
 
+## Phase 6 — Export renderer + integration ✅ (automated) / manual items open
+
+Automated (all green, 97/97 xUnit):
+
+- [x] Preview/export parity: same document rendered at 240px vs 960px agrees
+      within per-tool tolerance (vector tools, freehand, pixelate, blur,
+      numbered circle, text) — `AnnotationParityTests`
+- [x] Sidecar round-trip preserves annotations; corrupt sidecar tolerated
+- [x] Saving edits never modifies the source image bytes (non-destructive)
+- [x] `LoadComposited` applies sidecar edits (pixel-checked) and returns the
+      plain decode when there are none
+- [x] Empty sidecar (no annotations) treated as unannotated
+- [x] Clipboard integration test resilient to clipboard contention
+      (retry + skip; DIB layout covered by the pure unit test)
+
+Manual (needs an unlocked desktop):
+
+- [ ] Edit a card → annotate → Save → card thumbnail shows the annotations
+- [ ] Re-open Edit on the same card → previous annotations are still there
+- [ ] Export… writes a flattened PNG; opening it in another app shows the
+      annotations baked in
+- [ ] Save/Copy from the panel export the annotated image (not the original)
+- [ ] Discard an annotated card → both the staged PNG and its `.screendrop`
+      sidecar are deleted
+
+## Phase 5 — Annotation editor ✅ (automated) / manual items open
+
+Automated (all green):
+
+- [x] Annotation model: normalized coords, undo/redo (incl. batch gestures),
+      hit-testing, marker renumbering, clone independence (21 tests)
+- [x] Renderer: every tool marks the expected pixels and leaves the rest
+      untouched (11 tests)
+- [x] Build clean, zero warnings
+
+Manual (needs an unlocked desktop):
+
+- [ ] Every tool draws: rect, ellipse, arrow, freehand, text, numbered
+      circle, pixelate, blur
+- [ ] Select tool: click selects (dashed box + handles), drag moves (clamped
+      to the image), corner handle resizes, arrow endpoints drag
+- [ ] Ctrl+Z / Ctrl+Y undo/redo; a whole drag is one undo step
+- [ ] Delete removes the selection; numbered markers renumber
+- [ ] Text: click places the inline box; Enter commits, Esc cancels,
+      Shift+Enter adds a line
+- [ ] Color swatches change the active color and recolor the selection
+- [ ] Large captures: canvas fits the image, annotations stay crisp
+
 ## Audit — Phases 0–4 vs. mac parity (2026-08-26)
 
 Automated (all green, 52/52 xUnit):
@@ -41,7 +89,7 @@ Manual:
 
 - [ ] After a capture the panel appears bottom-center of the active display
 - [ ] Hover a card → Save/Copy/Edit/Discard buttons appear; they behave (Save writes to
-      export dir, Copy puts image on clipboard, Edit shows the Phase-5 notice, Discard
+      export dir, Copy puts image on clipboard, Edit opens the annotation editor, Discard
       removes the card and deletes the file)
 - [ ] Drag the panel anywhere (across monitors) and it stays put
 - [ ] The panel never appears in subsequent screenshots (visual check on unlocked desktop)

@@ -368,8 +368,9 @@ Live status board. Update as phases complete; keep §5 acceptance text authorita
 **Known gaps (Phase 4) — follow-ups, not yet closed:**
 - [x] **Discard leaves orphaned temp files** — fixed 2026-08-26 (audit): discard and
       eviction now delete the staged PNG; saved exports are never touched.
-- [ ] **Edit is a placeholder** — card Edit only notifies "arrives with Phase 5". Wire to the
-      annotation editor once Phase 5 lands.
+- [x] **Edit is a placeholder** — fixed 2026-08-26: card Edit opens the
+      annotation editor; edits persist as a `.screendrop` sidecar and the
+      card thumbnail/Save/Copy all export the composited image.
 - [ ] **Copy-from-panel untested** — clipboard is unavailable on the locked session, so the
       panel Copy path is code-reviewed only; needs an unlocked-desktop E2E.
 - [x] **Placement uses focused monitor** — fixed 2026-08-26 (audit): the capture's origin
@@ -393,16 +394,26 @@ Live status board. Update as phases complete; keep §5 acceptance text authorita
   from the window picker — UWP content renders via DirectComposition children that
   `PrintWindow` cannot composite reliably. Revisit with a WGC engine.
 
-### Phase 5 — Annotation editor ⬜
-- [ ] Document model + geometry ports unit-tested (normalized coords)
-- [ ] SkiaSharp canvas with undo/redo
-- [ ] Tools in order: rect → ellipse → freehand → arrow (+heads) → text adorner →
-      numbered circles → pixelate → blur (progressive)
-- [ ] Zoom/pan stable at 4K images
+### Phase 5 — Annotation editor ✅ (2026-08-26)
+- [x] Document model + geometry ports unit-tested (normalized coords) —
+      `AnnotationDocument`/`AnnotationEditorModel` in Core, snapshot undo/redo
+      with batch gestures, hit-testing, marker renumbering.
+- [x] SkiaSharp canvas with undo/redo — `AnnotationCanvas` (SKElement) draws
+      through the shared `AnnotationRenderer` so preview == export.
+- [x] Tools: rect, ellipse, arrow, freehand, text (inline box), numbered
+      circles, pixelate, blur — all draw/select/move/undo.
+- [ ] Zoom/pan stable at 4K images — deferred: the canvas fits the image to
+      the window (downscaled preview, full-res export); interactive zoom/pan
+      is a follow-up.
 
-### Phase 6 — Export renderer + integration ⬜
-- [ ] Full-res compositing incl. pixelate & blur parity
-- [ ] Editor output wired into after-capture pipeline and history
+### Phase 6 — Export renderer + integration ✅ (2026-08-26)
+- [x] Full-res compositing incl. pixelate & blur parity — automated
+      preview-vs-export parity tests render the same document at 240px and
+      960px and assert per-tool visual agreement (`AnnotationParityTests`).
+- [x] Editor output wired into after-capture pipeline and history — edits
+      persist non-destructively as a `.screendrop` sidecar; card thumbnails,
+      panel Save, and panel Copy all export the composited image;
+      discard/eviction clean up the sidecar with the staged PNG.
 
 ### Phase 7 — Settings, polish, packaging ⬜
 - [ ] Prefs tabs parity (General/Screenshots/Hotkeys/About)
@@ -431,3 +442,5 @@ Live status board. Update as phases complete; keep §5 acceptance text authorita
 - **2026-08-25 P4d**: floating preview panel — borderless/topmost/transparent window, card stack with hover actions, drag-move, bottom-center placement, affinity exclusion, presenter wiring, global exception→trace. Fixed a live bug: tray notification custom icon must be exactly 32×32 (was 128×128 → InvalidOperationException).
 - **2026-08-25 P4e**: panel persistence E2E (two captures → panel stays up, affinity held, app alive). **Phase 4 complete** (manual QA: hover actions, drag-follow, sleep/resume, visual no-capture).
 - **2026-08-26 audit**: Phases 0–4 audited against the mac app. Panel file-cleanup + keep-on-failure semantics (`45b1501`), panel placed on the capture's monitor (`33d077b`), area pipeline off the UI thread (`8edb4e2`), direct GDI→SkiaSharp readback + sampled flat-frame check (`14e907a`), aspect-fit toast thumbnail (`4b890ea`), SKCodec downsampled card thumbnails (`90f3598`). 52/52 tests green throughout.
+- **2026-08-26 P5**: annotation model in Core (normalized document, editor state, snapshot undo/redo) `6153fb2`; SkiaSharp renderer for all 8 tools `eab86f6`; interactive editor window wired to the preview card Edit action `5fc65f7`; region-crop test race fix `1885632`. 82/82 tests green.
+- **2026-08-26 P6**: automated preview-vs-export parity tests (6 tools at 240px vs 960px) `abb7d2f`; non-destructive sidecar export helper + round-trip tests `b75e5a7`; editor Save→sidecar / Export→flattened PNG, composited thumbnails + Save/Copy, sidecar cleanup on discard `34c4811`; clipboard integration test made contention-resilient. **Phase 6 complete.** 97/97 tests green.
