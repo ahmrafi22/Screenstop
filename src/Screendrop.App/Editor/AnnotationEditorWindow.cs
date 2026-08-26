@@ -60,6 +60,7 @@ internal sealed class AnnotationEditorWindow : Window
         MinHeight = 440;
         WindowStartupLocation = WindowStartupLocation.CenterScreen;
         Background = FindAppBrush("Sd.Bg");
+        Foreground = FindAppBrush("Sd.Text");
 
         if (!File.Exists(imagePath) || !_canvas.LoadImage(imagePath))
         {
@@ -117,7 +118,7 @@ internal sealed class AnnotationEditorWindow : Window
         // Floating hint chip in the lower-left corner of the image area.
         var hintChip = new Border
         {
-            Background = new SolidColorBrush(Color.FromArgb(200, 17, 24, 39)),
+            Background = new SolidColorBrush(Color.FromArgb(200, 41, 41, 41)),
             CornerRadius = new CornerRadius(6),
             Padding = new Thickness(10, 4, 10, 4),
             Margin = new Thickness(12, 0, 0, 12),
@@ -145,7 +146,7 @@ internal sealed class AnnotationEditorWindow : Window
 
         _cropConfirmBar = new Border
         {
-            Background = new SolidColorBrush(Color.FromArgb(230, 17, 24, 39)),
+            Background = new SolidColorBrush(Color.FromArgb(230, 41, 41, 41)),
             BorderBrush = FindAppBrush("Sd.Border"),
             BorderThickness = new Thickness(1),
             CornerRadius = new CornerRadius(8),
@@ -283,16 +284,16 @@ internal sealed class AnnotationEditorWindow : Window
     {
         foreach (var (tool, icon, shortcut) in new[]
         {
-            (AnnotationTool.Select, ToolIcon.SelectCursor(), "V"),
+            (AnnotationTool.Select, ToolIcon.SelectCursor(), "H"),
             (AnnotationTool.Rectangle, ToolIcon.Rectangle(), "R"),
             (AnnotationTool.FilledRectangle, ToolIcon.FilledRectangle(), "F"),
-            (AnnotationTool.Ellipse, ToolIcon.Ellipse(), "E"),
+            (AnnotationTool.Ellipse, ToolIcon.Ellipse(), "O"),
             (AnnotationTool.Line, ToolIcon.Line(), "L"),
             (AnnotationTool.Arrow, ToolIcon.Arrow(), "A"),
             (AnnotationTool.Freehand, ToolIcon.Freehand(), "D"),
-            (AnnotationTool.Highlight, ToolIcon.Highlight(), "H"),
+            (AnnotationTool.NumberedCircle, ToolIcon.StepMarker(), "1"),
             (AnnotationTool.Text, ToolIcon.Text(), "T"),
-            (AnnotationTool.NumberedCircle, ToolIcon.StepMarker(), "N"),
+            (AnnotationTool.Highlight, ToolIcon.Highlight(), "G"),
             (AnnotationTool.Pixelate, ToolIcon.Pixelate(), "P"),
             (AnnotationTool.Blur, ToolIcon.Blur(), "B"),
         })
@@ -618,16 +619,16 @@ internal sealed class AnnotationEditorWindow : Window
     {
         AnnotationTool? tool = key switch
         {
-            Key.V => AnnotationTool.Select,
+            Key.H => AnnotationTool.Select,
             Key.R => AnnotationTool.Rectangle,
             Key.F => AnnotationTool.FilledRectangle,
-            Key.E => AnnotationTool.Ellipse,
+            Key.O => AnnotationTool.Ellipse,
             Key.L => AnnotationTool.Line,
             Key.A => AnnotationTool.Arrow,
             Key.D => AnnotationTool.Freehand,
-            Key.H => AnnotationTool.Highlight,
             Key.T => AnnotationTool.Text,
-            Key.N => AnnotationTool.NumberedCircle,
+            Key.D1 => AnnotationTool.NumberedCircle,
+            Key.G => AnnotationTool.Highlight,
             Key.P => AnnotationTool.Pixelate,
             Key.B => AnnotationTool.Blur,
             _ => null,
@@ -740,14 +741,32 @@ internal static class ToolIcon
         HorizontalAlignment = HorizontalAlignment.Center,
     };
 
-    public static FrameworkElement SelectCursor() => Host(16, 16, Filled(
-        "M3,1 L3,13.2 L6.3,10.3 L8.3,14.6 L10.6,13.6 L8.6,9.4 L12.8,9 Z"));
+    public static FrameworkElement SelectCursor() => Host(16, 16, new TextBlock
+    {
+        Text = "\uE7A9", // Segoe touch-pointer: stand-in for mac's hand.point.up.left
+        FontFamily = UiGlyph.Font,
+        FontSize = 15,
+    });
 
     public static FrameworkElement Rectangle() => Host(16, 16, Stroked("M2,3.5 L14,3.5 L14,12.5 L2,12.5 Z"));
 
     public static FrameworkElement FilledRectangle() => Host(16, 16, Filled("M2,3.5 L14,3.5 L14,12.5 L2,12.5 Z"));
 
-    public static FrameworkElement Highlight() => Host(16, 16, Filled("M2,6 L14,6 L14,10 L2,10 Z"));
+    /// Mac highlight icon (square.dashed.inset.filled): dashed outline with a
+    /// solid bar inset inside it.
+    public static FrameworkElement Highlight()
+    {
+        var outer = Stroked("M2,3 L2,13 M14,3 L14,13 M2,3 L5.5,3 M10.5,3 L14,3 M2,13 L5.5,13 M10.5,13 L14,13");
+        var inner = Filled("M4.5,6.5 L11.5,6.5 L11.5,9.5 L4.5,9.5 Z");
+        return Host(16, 16, new Canvas
+        {
+            Width = 16,
+            Height = 16,
+            Children = { outer, inner },
+            VerticalAlignment = VerticalAlignment.Center,
+            HorizontalAlignment = HorizontalAlignment.Center,
+        });
+    }
 
     public static FrameworkElement Ellipse() => Host(16, 16, StrokedEllipse(12.5, 9.5));
 
@@ -770,23 +789,27 @@ internal static class ToolIcon
     public static FrameworkElement Freehand() => Host(16, 16, Stroked(
         "M1.5,11.5 C3.5,5 6,5 8,8.5 C9.5,11.2 11.5,10.8 14.5,4.5"));
 
-    public static FrameworkElement Text() => Host(16, 16, Stroked("M3,3.5 L13,3.5 M8,3.5 L8,13"));
+    /// Mac text icon (textformat): a letterform.
+    public static FrameworkElement Text() => Host(16, 16, Filled(
+        "M6.9,2.8 L9.1,2.8 L13.2,13.2 L11.1,13.2 L10.2,10.7 L5.8,10.7 L4.9,13.2 L2.8,13.2 Z M9.55,8.9 L8,4.7 L6.45,8.9 Z"));
 
+    /// Mac numberedCircle icon is 1.circle.fill: a filled disc with the digit
+    /// knocked out in the chrome ground color.
     public static FrameworkElement StepMarker()
     {
-        var ring = new System.Windows.Shapes.Ellipse
+        var disc = new System.Windows.Shapes.Ellipse
         {
-            Width = 12,
-            Height = 12,
-            StrokeThickness = 1.6,
+            Width = 13,
+            Height = 13,
         };
-        ring.SetBinding(System.Windows.Shapes.Ellipse.StrokeProperty, ForegroundOfHost);
+        disc.SetBinding(System.Windows.Shapes.Ellipse.FillProperty, ForegroundOfHost);
 
         var digit = new TextBlock
         {
             Text = "1",
-            FontSize = 8,
+            FontSize = 8.5,
             FontWeight = FontWeights.Bold,
+            Foreground = new SolidColorBrush(Color.FromRgb(0x1E, 0x1E, 0x20)),
             HorizontalAlignment = HorizontalAlignment.Center,
             VerticalAlignment = VerticalAlignment.Center,
         };
@@ -795,33 +818,36 @@ internal static class ToolIcon
         {
             Width = 14,
             Height = 14,
-            Children = { ring, digit },
+            Children = { disc, digit },
             VerticalAlignment = VerticalAlignment.Center,
             HorizontalAlignment = HorizontalAlignment.Center,
         });
     }
 
-    public static FrameworkElement Pixelate() => Host(16, 16, Filled(
-        "M0,0 H4.5 V4.5 H0 Z M11.5,0 H16 V4.5 H11.5 Z M5.75,5.75 H10.25 V10.25 H5.75 Z M0,11.5 H4.5 V16 H0 Z M11.5,11.5 H16 V16 H11.5 Z"));
-
-    public static FrameworkElement Blur() => Host(16, 16, new Canvas
+    /// Mac pixelate icon (app.background.dotted): a 3x3 grid of dots.
+    public static FrameworkElement Pixelate() => Host(16, 16, new Canvas
     {
         Width = 16,
         Height = 16,
         Children =
         {
-            Ring(14, 0.28),
-            Ring(9.5, 0.55),
-            Ring(5, 0.95),
+            Dot(3, 3), Dot(8, 3), Dot(13, 3),
+            Dot(3, 8), Dot(8, 8), Dot(13, 8),
+            Dot(3, 13), Dot(8, 13), Dot(13, 13),
         },
         VerticalAlignment = VerticalAlignment.Center,
         HorizontalAlignment = HorizontalAlignment.Center,
     });
 
-    private static System.Windows.Shapes.Ellipse Ring(double diameter, double opacity)
+    private static System.Windows.Shapes.Ellipse Dot(double cx, double cy)
     {
-        var ring = StrokedEllipse(diameter, diameter);
-        ring.Opacity = opacity;
-        return ring;
+        var dot = new System.Windows.Shapes.Ellipse { Width = 2.4, Height = 2.4 };
+        Canvas.SetLeft(dot, cx - 1.2);
+        Canvas.SetTop(dot, cy - 1.2);
+        return dot;
     }
+
+    /// Mac blur icon (drop.fill): a water droplet.
+    public static FrameworkElement Blur() => Host(16, 16, Filled(
+        "M8,1.6 C8,1.6 12.8,7.2 12.8,10.4 C12.8,13.1 10.65,15 8,15 C5.35,15 3.2,13.1 3.2,10.4 C3.2,7.2 8,1.6 8,1.6 Z"));
 }
