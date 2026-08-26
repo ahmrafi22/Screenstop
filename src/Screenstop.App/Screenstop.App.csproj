@@ -8,6 +8,11 @@
     <AssemblyName>Screenstop</AssemblyName>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>Assets\screenstop.ico</ApplicationIcon>
+    <Version>1.0.0</Version>
+    <FileVersion>1.0.0.0</FileVersion>
+    <Product>Screenstop</Product>
+    <Company>Screenstop</Company>
+    <Description>Screenshot and annotation for Windows</Description>
   </PropertyGroup>
 
   <ItemGroup>
