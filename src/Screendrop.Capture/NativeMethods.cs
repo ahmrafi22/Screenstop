@@ -116,6 +116,9 @@ internal static class NativeMethods
     [DllImport("gdi32.dll")]
     internal static extern int GetDIBits(IntPtr hdc, IntPtr hbm, uint start, uint cLines, [Out] byte[]? lpvBits, ref BITMAPINFO lpbmi, uint usage);
 
+    [DllImport("gdi32.dll")]
+    internal static extern int GetDIBits(IntPtr hdc, IntPtr hbm, uint start, uint cLines, IntPtr lpvBits, ref BITMAPINFO lpbmi, uint usage);
+
     [DllImport("gdi32.dll", CharSet = CharSet.Unicode)]
     internal static extern IntPtr CreateDC(string? lpszDriver, string? lpszDevice, string? lpszOutput, IntPtr lpInitData);
 
