@@ -1,6 +1,7 @@
 using System.Windows;
 using System.Windows.Input;
 using Screenstop.Core.Annotations;
+using Screenstop.Core.Geometry;
 using Screenstop.Rendering;
 using SkiaSharp;
 using SkiaSharp.Views.Desktop;
@@ -26,11 +27,9 @@ internal sealed class AnnotationCanvas : SKElement
     private int _previewWidth;
     private int _previewHeight;
 
-    // Fit mapping: canvas px = offset + normalized * displaySize.
-    private double _offsetX;
-    private double _offsetY;
-    private double _dispW;
-    private double _dispH;
+    // Zoom/pan mapping (pure math lives in Core's ZoomPanTransform):
+    // canvas px = Offset + normalized * DisplaySize.
+    private readonly ZoomPanTransform _viewport = new();
     private double _ratioX = 1;
     private double _ratioY = 1;
 
@@ -39,6 +38,10 @@ internal sealed class AnnotationCanvas : SKElement
     private NormalizedPoint _dragStart;
     private NormalizedPoint _lastNorm;
     private NormalizedRect _resizeOrigin;
+
+    // Middle-button pan state (canvas pixels).
+    private bool _panning;
+    private Point _panLast;
 
     public AnnotationEditorModel Model { get; } = new();
 
@@ -79,6 +82,7 @@ internal sealed class AnnotationCanvas : SKElement
             _fullBitmap = bitmap;
             _previewImage?.Dispose();
             _previewImage = null;
+            _viewport.Reset();
             InvalidateVisual();
             return true;
         }
@@ -141,14 +145,18 @@ internal sealed class AnnotationCanvas : SKElement
         }
 
         UpdateDpiRatio(canvasW, canvasH);
-        UpdateFit(canvasW, canvasH);
+        _viewport.CanvasWidth = canvasW;
+        _viewport.CanvasHeight = canvasH;
+        _viewport.ImageWidth = _fullBitmap.Width;
+        _viewport.ImageHeight = _fullBitmap.Height;
+        _viewport.Recompute();
         EnsurePreviewImage();
         if (_previewImage is null)
         {
             return;
         }
 
-        canvas.Translate((float)_offsetX, (float)_offsetY);
+        canvas.Translate((float)_viewport.OffsetX, (float)_viewport.OffsetY);
         canvas.DrawImage(_previewImage, 0, 0);
 
         var annotations = new List<Annotation>(Model.Annotations);
@@ -222,6 +230,16 @@ internal sealed class AnnotationCanvas : SKElement
     protected override void OnMouseMove(MouseEventArgs e)
     {
         base.OnMouseMove(e);
+
+        if (_panning)
+        {
+            var p = ToCanvasPx(e);
+            _viewport.PanBy(p.X - _panLast.X, p.Y - _panLast.Y);
+            _panLast = p;
+            InvalidateVisual();
+            return;
+        }
+
         if (_mode == DragMode.None)
         {
             return;
@@ -319,6 +337,89 @@ internal sealed class AnnotationCanvas : SKElement
 
         _mode = DragMode.None;
         InvalidateVisual();
+    }
+
+    protected override void OnMouseWheel(MouseWheelEventArgs e)
+    {
+        base.OnMouseWheel(e);
+        if (_fullBitmap is null)
+        {
+            return;
+        }
+
+        var p = ToCanvasPx(e);
+        double factor = e.Delta > 0 ? 1.2 : 1 / 1.2;
+        _viewport.ZoomAt(p.X, p.Y, _viewport.Zoom * factor);
+        RaiseZoomChanged();
+        InvalidateVisual();
+        e.Handled = true;
+    }
+
+    protected override void OnMouseDown(MouseButtonEventArgs e)
+    {
+        base.OnMouseDown(e);
+        if (e.ChangedButton != MouseButton.Middle || _fullBitmap is null)
+        {
+            return;
+        }
+
+        _panning = true;
+        _panLast = ToCanvasPx(e);
+        CaptureMouse();
+        Cursor = Cursors.ScrollAll;
+        e.Handled = true;
+    }
+
+    protected override void OnMouseUp(MouseButtonEventArgs e)
+    {
+        base.OnMouseUp(e);
+        if (e.ChangedButton != MouseButton.Middle || !_panning)
+        {
+            return;
+        }
+
+        _panning = false;
+        if (IsMouseCaptured)
+        {
+            ReleaseMouseCapture();
+        }
+
+        Cursor = ActiveTool == AnnotationTool.Select ? Cursors.Arrow : Cursors.Cross;
+        e.Handled = true;
+    }
+
+    /// Current zoom level (1.0 = fit to window).
+    public double ZoomLevel => _viewport.Zoom;
+
+    /// Raised whenever the zoom level changes (wheel or toolbar).
+    public event Action<double>? ZoomChanged;
+
+    public void ZoomIn() => ZoomByFactor(1.25);
+
+    public void ZoomOut() => ZoomByFactor(1 / 1.25);
+
+    public void ResetZoom()
+    {
+        _viewport.Reset();
+        RaiseZoomChanged();
+        InvalidateVisual();
+    }
+
+    private void ZoomByFactor(double factor)
+    {
+        if (_fullBitmap is null)
+        {
+            return;
+        }
+
+        _viewport.SetZoom(_viewport.Zoom * factor);
+        RaiseZoomChanged();
+        InvalidateVisual();
+    }
+
+    private void RaiseZoomChanged()
+    {
+        ZoomChanged?.Invoke(_viewport.Zoom);
     }
 
     private void BeginSelectInteraction(NormalizedPoint norm)
@@ -489,17 +590,20 @@ internal sealed class AnnotationCanvas : SKElement
     private void DrawSelection(SKCanvas canvas)
     {
         var selected = Model.Selected;
-        if (selected is null || _dispW <= 0 || _dispH <= 0)
+        if (selected is null || _viewport.DisplayWidth <= 0 || _viewport.DisplayHeight <= 0)
         {
             return;
         }
 
+        double dispW = _viewport.DisplayWidth;
+        double dispH = _viewport.DisplayHeight;
+
         var bounds = selected.Bounds();
         var rect = new SKRect(
-            (float)(bounds.X * _dispW),
-            (float)(bounds.Y * _dispH),
-            (float)(bounds.Right * _dispW),
-            (float)(bounds.Bottom * _dispH));
+            (float)(bounds.X * dispW),
+            (float)(bounds.Y * dispH),
+            (float)(bounds.Right * dispW),
+            (float)(bounds.Bottom * dispH));
 
         using var dashPaint = new SKPaint
         {
@@ -529,8 +633,8 @@ internal sealed class AnnotationCanvas : SKElement
         {
             foreach (var p in new[] { selected.Start, selected.End })
             {
-                canvas.DrawCircle((float)(p.X * _dispW), (float)(p.Y * _dispH), (float)HandleSizePx / 2, handlePaint);
-                canvas.DrawCircle((float)(p.X * _dispW), (float)(p.Y * _dispH), (float)HandleSizePx / 2, handleBorder);
+                canvas.DrawCircle((float)(p.X * dispW), (float)(p.Y * dispH), (float)HandleSizePx / 2, handlePaint);
+                canvas.DrawCircle((float)(p.X * dispW), (float)(p.Y * dispH), (float)HandleSizePx / 2, handleBorder);
             }
         }
         else
@@ -550,32 +654,20 @@ internal sealed class AnnotationCanvas : SKElement
         }
     }
 
-    private void UpdateFit(int canvasW, int canvasH)
-    {
-        if (_fullBitmap is null)
-        {
-            return;
-        }
-
-        double fit = Math.Min(canvasW / (double)_fullBitmap.Width, canvasH / (double)_fullBitmap.Height);
-        _dispW = _fullBitmap.Width * fit;
-        _dispH = _fullBitmap.Height * fit;
-        _offsetX = (canvasW - _dispW) / 2;
-        _offsetY = (canvasH - _dispH) / 2;
-    }
-
     /// Builds (or rebuilds) the display-resolution image the annotations are
     /// composited against. Pixelate/blur sample from this image, so it must
     /// match the coordinate space passed to AnnotationRenderer.Draw.
     private void EnsurePreviewImage()
     {
-        if (_fullBitmap is null || _dispW < 1 || _dispH < 1)
+        double dispW = _viewport.DisplayWidth;
+        double dispH = _viewport.DisplayHeight;
+        if (_fullBitmap is null || dispW < 1 || dispH < 1)
         {
             return;
         }
 
-        int targetW = Math.Max(1, (int)Math.Round(_dispW));
-        int targetH = Math.Max(1, (int)Math.Round(_dispH));
+        int targetW = Math.Max(1, (int)Math.Round(dispW));
+        int targetH = Math.Max(1, (int)Math.Round(dispH));
         if (_previewImage is not null && _previewWidth == targetW && _previewHeight == targetH)
         {
             return;
@@ -611,30 +703,28 @@ internal sealed class AnnotationCanvas : SKElement
         return new Point(p.X * _ratioX, p.Y * _ratioY);
     }
 
-    private Point ToCanvasPx(NormalizedPoint n) => new(_offsetX + (n.X * _dispW), _offsetY + (n.Y * _dispH));
+    private Point ToCanvasPx(NormalizedPoint n)
+    {
+        var (x, y) = _viewport.ToCanvas(n.X, n.Y);
+        return new Point(x, y);
+    }
 
     private NormalizedPoint ToNorm(Point canvasPx)
     {
-        if (_dispW <= 0 || _dispH <= 0)
-        {
-            return new NormalizedPoint(0, 0);
-        }
-
-        return new NormalizedPoint(
-            Math.Clamp((canvasPx.X - _offsetX) / _dispW, 0, 1),
-            Math.Clamp((canvasPx.Y - _offsetY) / _dispH, 0, 1));
+        var (x, y) = _viewport.ToNormalized(canvasPx.X, canvasPx.Y);
+        return new NormalizedPoint(x, y);
     }
 
     /// Converts a canvas-pixel distance to normalized units (for tolerances).
     private double PxToNorm(double px)
     {
-        if (_dispW <= 0 || _fullBitmap is null)
+        if (_viewport.DisplayWidth <= 0 || _fullBitmap is null)
         {
             return 0.01;
         }
 
         double maxDim = Math.Max(_fullBitmap.Width, _fullBitmap.Height);
-        return (px * _ratioX) / (_dispW * (_fullBitmap.Width / maxDim));
+        return (px * _ratioX) / (_viewport.DisplayWidth * (_fullBitmap.Width / maxDim));
     }
 
     public Point NormalizedToCanvasDip(NormalizedPoint n)
