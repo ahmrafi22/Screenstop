@@ -7,7 +7,7 @@ code drift from it silently.
 **References:**
 - macOS architecture (verified, supersedes the PNG): `../Screendrop/docs/architecture.md`
 - Key fact for this port: mac stills use the `screencapture` CLI for all modes; ScreenCaptureKit is recording-only.
-- The mac app has 4 logged optimization proposals (single after-capture fan-out, background upload queue, composition root, model/flow split). Windows adopts the first and fourth **by design from day one** (see §4 mapping notes) rather than porting the scattered structure and refactoring later.
+- The mac app has 4 logged optimization proposals (single after-capture fan-out, background upload queue, composition root, model/flow split). Windows adopts the first and fourth **by design from day one** (see §4 mapping notes) rather than porting the scattered structure and refactoring later. The upload queue does not apply: **sharing/uploading is out of scope for Windows** (removed 2026-08-26 by product decision) — captures stay local-only.
 
 ---
 
@@ -38,7 +38,7 @@ large recording/teleprompter/cloud suite (~44k lines total); that suite is **out
 | Camera overlay recording | Deferred |
 | Transcription / Speech engine | Deferred |
 | Teleprompter | Deferred |
-| Cloud upload + sidecar uploader | Deferred |
+| Cloud upload + sidecar uploader | **Removed from scope** (2026-08-26) — no sharing/uploading on Windows; captures are local-only |
 | Wallpaper export | Out of scope v1 |
 | App Intents / Shortcuts | Out of scope (no direct equivalent; revisit with voice access later) |
 | Sparkle updater | Deferred — winget manifest first, self-update later |
@@ -224,7 +224,7 @@ and is unit-testable (mirrors the mac model layer discipline).
 | `ScreendropPreferences.swift` (UserDefaults) | `Core/…/SettingsStore.cs` (JSON) | versioned schema, safe defaults |
 | `ScreenshotHistoryStore.swift` | `Core/History/HistoryStore.cs` | JSON index + file refs |
 | `ScreenshotFileNaming.swift` | `Core/History/FileNaming.cs` | pattern tokens identical |
-| `AfterCaptureActions.swift` | `Infrastructure/AfterCapturePipeline.cs` | mac evaluates the after-capture matrix in 3 scattered call sites (flagged as OPT in `../Screendrop/docs/architecture.md`) — **Windows adopts the single fan-out point from day one**: one `AfterCapturePipeline.Run(capture, type)` invoked by the coordinator, covering overlay/copy/save/upload/annotate/pin |
+| `AfterCaptureActions.swift` | `Infrastructure/AfterCapturePipeline.cs` | mac evaluates the after-capture matrix in 3 scattered call sites (flagged as OPT in `../Screendrop/docs/architecture.md`) — **Windows adopts the single fan-out point from day one**: one `AfterCapturePipeline.Run(capture, type)` invoked by the coordinator, covering overlay/copy/save/annotate/pin (mac's upload action is dropped — sharing/uploading removed from Windows scope) |
 | `MenuBarView.swift` | tray context menu | |
 
 ---
