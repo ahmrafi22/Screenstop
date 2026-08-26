@@ -73,8 +73,7 @@ public class CaptureIntegrationTests
         var primary = PrimaryMonitor();
         var bounds = primary.PhysicalBounds;
 
-        using var full = GDICapturer.CaptureMonitor(primary);
-
+        // Stability pre-check: if the screen is already changing, skip.
         using (var stabilityA = GDICapturer.CaptureMonitor(primary))
         using (var stabilityB = GDICapturer.CaptureMonitor(primary))
         {
@@ -84,6 +83,12 @@ public class CaptureIntegrationTests
             }
         }
 
+        // Capture full and region back-to-back so the gap between them is as
+        // small as possible (the old order captured full, then ran the
+        // stability check, then captured region - the screen could change in
+        // that gap and the guard never saw it).
+        using var full = GDICapturer.CaptureMonitor(primary);
+
         var region = new PixelRect(
             bounds.X + bounds.Width / 4,
             bounds.Y + bounds.Height / 4,
@@ -91,6 +96,17 @@ public class CaptureIntegrationTests
             bounds.Height / 2);
 
         using var regionCapture = GDICapturer.CaptureRegion(region);
+
+        // Post-check: if the screen changed while we were capturing, the
+        // comparison is inconclusive - skip rather than fail on a live screen.
+        using (var fullAfter = GDICapturer.CaptureMonitor(primary))
+        {
+            if (MismatchRatio(full.Bitmap, fullAfter.Bitmap) > 0.10)
+            {
+                return;
+            }
+        }
+
         Assert.Equal(region.Width, regionCapture.Width);
         Assert.Equal(region.Height, regionCapture.Height);
 
