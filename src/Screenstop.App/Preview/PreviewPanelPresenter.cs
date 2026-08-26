@@ -2,6 +2,7 @@ using System.IO;
 using System.Windows;
 using System.Windows.Media.Imaging;
 using Screenstop.App.Capture;
+using Screenstop.App.Editor;
 using Screenstop.App.Infrastructure;
 using Screenstop.Capture;
 using Screenstop.Core.Geometry;
@@ -203,7 +204,21 @@ internal sealed class PreviewPanelPresenter
 
     private void Edit(PreviewEntry entry)
     {
-        _notify("Screenstop", "Annotation editor arrives with Phase 5.");
+        string imagePath = entry.ImagePath;
+        if (!File.Exists(imagePath))
+        {
+            _notify("Screenstop", "The image file is missing.");
+            return;
+        }
+
+        var editor = new AnnotationEditorWindow(imagePath) { SaveInPlace = true };
+        editor.Saved += _ =>
+        {
+            // The staged file now holds the annotated image: refresh the card.
+            Refresh();
+            _notify("Annotated", Path.GetFileName(imagePath));
+        };
+        editor.Show();
     }
 
     private void OnEvicted(PreviewEntry entry)
