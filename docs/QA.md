@@ -2,6 +2,39 @@
 
 Manual verification per phase. Check items off as verified.
 
+## Phase 7 — Settings, polish, packaging ✅ (automated) / manual items open
+
+Automated (all green, 138/138 xUnit):
+
+- [x] Crash report: file name encodes timestamp, layout contains all fields,
+      fatal flag, trailing-whitespace trim, distinct names per millisecond (5 tests)
+- [x] Launch-at-login command: quoting rules, no double-quote, whitespace trim,
+      empty-path rejection (6 tests)
+- [x] Hotkey combos: parse/format/canonicalization, F1–F24, named keys, bare-key
+      rejection, malformed-input rejection, settings normalization incl. duplicate
+      resolution (30 tests)
+- [x] Installer compiles clean with ISCC 6.7.3 → `Screenstop-Setup-1.0.0.exe`
+      (9.4 MB) produced and verified
+- [x] Build clean, zero warnings
+
+Manual (needs an unlocked desktop):
+
+- [ ] Tray menu → Settings… opens the window; a second click focuses the open one
+- [ ] General: launch-at-login toggle writes/removes
+      `HKCU\...\Run\Screenstop` (check with regedit); survives a sign-out/in
+- [ ] Screenshots: toggles + quality slider + save folder + name pattern persist
+      after Save and change capture behavior immediately
+- [ ] Hotkeys: record a new combo → Save → old combo stops working, new one
+      captures; conflict with another app → balloon names it
+- [ ] Hotkeys: Backspace resets a box to its default; Escape cancels recording
+- [ ] About: version shown; trace-log / crash-report buttons open Explorer
+- [ ] Crash log: force a crash (or trust the handlers) → report appears in
+      `%APPDATA%\Screenstop\crashes` with version + OS + stack
+- [ ] Installer: clean install (no UAC prompt), app launches from the wizard,
+      tray icon appears; uninstall removes the app but keeps
+      `%APPDATA%\Screenstop` (settings + crash reports) and the Run key cleanup
+- [ ] Reinstall over an existing install: settings survive, no duplicate entries
+
 ## Phase 6 — Export renderer + integration ✅ (automated) / manual items open
 
 Automated (all green, 97/97 xUnit):
