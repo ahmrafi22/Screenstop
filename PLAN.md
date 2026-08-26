@@ -366,15 +366,32 @@ Live status board. Update as phases complete; keep §5 acceptance text authorita
 - [x] E2E: panel appears after capture(s), affinity == 0x11, app stays alive (4e)
 
 **Known gaps (Phase 4) — follow-ups, not yet closed:**
-- [ ] **Discard leaves orphaned temp files** — removing a card does not delete the staged
-      `.png` in `%TEMP%\Screendrop` (mac deletes it). Fix: `Discard` deletes the staging file.
+- [x] **Discard leaves orphaned temp files** — fixed 2026-08-26 (audit): discard and
+      eviction now delete the staged PNG; saved exports are never touched.
 - [ ] **Edit is a placeholder** — card Edit only notifies "arrives with Phase 5". Wire to the
       annotation editor once Phase 5 lands.
 - [ ] **Copy-from-panel untested** — clipboard is unavailable on the locked session, so the
       panel Copy path is code-reviewed only; needs an unlocked-desktop E2E.
-- [ ] **Placement uses focused monitor** — on multi-monitor the panel positions on the
-      *focused* display, which can differ from the actual capture target. Fix: pass the
-      capture's monitor through `OnCapture` and place on it.
+- [x] **Placement uses focused monitor** — fixed 2026-08-26 (audit): the capture's origin
+      flows through `AfterCaptureResult`; the panel is placed on the monitor containing it
+      (`MonitorEnumerator.GetMonitorForPoint`, `MonitorFromPoint` fallback).
+
+**Audit log (2026-08-26, Phases 0–4 vs. mac parity):**
+- *Panel action semantics now match mac* (`ScreenshotPreviewStack`): Save/Copy dismiss the
+  card only on success (failed actions keep it for retry); panel Save names files with the
+  capture's timestamp, not the save time.
+- *Area capture no longer blocks the UI thread* — crop + pipeline moved out of
+  `dispatcher.Invoke`; only the overlay runs on the UI thread.
+- *GDI readback optimized* — `GetDIBits` writes directly into the SKBitmap pixel buffer
+  (rowBytes pinned to width*4); the intermediate managed buffer + `Marshal.Copy` is gone
+  (~33 MB saved per 4K capture). `IsPrintWindowFlat` samples 8 scanlines with early exit
+  instead of reading the whole frame.
+- *Toast thumbnail* aspect-fits the capture inside the mandatory 32×32 icon canvas.
+- *Card thumbnails* decode through `SKCodec` with a scaled target (mac
+  `downsampledImage(maxPixelSize: 520)` parity); PNG falls back to full decode + resize.
+- *Known limitation (unchanged by design):* `Windows.UI.Core.CoreWindow` stays excluded
+  from the window picker — UWP content renders via DirectComposition children that
+  `PrintWindow` cannot composite reliably. Revisit with a WGC engine.
 
 ### Phase 5 — Annotation editor ⬜
 - [ ] Document model + geometry ports unit-tested (normalized coords)
@@ -413,3 +430,4 @@ Live status board. Update as phases complete; keep §5 acceptance text authorita
 - **2026-08-25 P4c**: `DisplayAffinity` guard (`WDA_EXCLUDEFROMCAPTURE`). Unit test caught the wrong constant (`WDA_MONITOR`); fixed.
 - **2026-08-25 P4d**: floating preview panel — borderless/topmost/transparent window, card stack with hover actions, drag-move, bottom-center placement, affinity exclusion, presenter wiring, global exception→trace. Fixed a live bug: tray notification custom icon must be exactly 32×32 (was 128×128 → InvalidOperationException).
 - **2026-08-25 P4e**: panel persistence E2E (two captures → panel stays up, affinity held, app alive). **Phase 4 complete** (manual QA: hover actions, drag-follow, sleep/resume, visual no-capture).
+- **2026-08-26 audit**: Phases 0–4 audited against the mac app. Panel file-cleanup + keep-on-failure semantics (`45b1501`), panel placed on the capture's monitor (`33d077b`), area pipeline off the UI thread (`8edb4e2`), direct GDI→SkiaSharp readback + sampled flat-frame check (`14e907a`), aspect-fit toast thumbnail (`4b890ea`), SKCodec downsampled card thumbnails (`90f3598`). 52/52 tests green throughout.
