@@ -18,6 +18,7 @@ internal sealed class PreviewPanelPresenter
     private readonly PreviewStack _stack = new(maxCount: 6);
     private readonly CaptureCoordinator.NotifyHandler _notify;
     private PreviewPanelWindow? _window;
+    private MonitorInfo? _targetMonitor;
 
     public PreviewPanelPresenter(CaptureCoordinator.NotifyHandler notify)
     {
@@ -29,6 +30,11 @@ internal sealed class PreviewPanelPresenter
     {
         var entry = new PreviewEntry(result.StagingPath, result.SavedPath, captureType, DateTimeOffset.Now);
         _stack.Push(entry);
+
+        // Mac parity (PreviewWindowPlacement.setTargetDisplayID): the panel
+        // appears on the display the capture came from, not whichever monitor
+        // happens to hold the foreground window.
+        _targetMonitor = MonitorEnumerator.GetMonitorForPoint(result.OriginX, result.OriginY);
         Show();
     }
 
@@ -68,7 +74,7 @@ internal sealed class PreviewPanelPresenter
 
     private void PositionWindow()
     {
-        var monitor = MonitorEnumerator.GetFocusedMonitor();
+        var monitor = _targetMonitor ?? MonitorEnumerator.GetFocusedMonitor();
         if (monitor is null || _window is null)
         {
             return;

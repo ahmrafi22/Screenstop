@@ -11,7 +11,7 @@ internal static class AfterCapturePipeline
 {
     private static readonly string TempRoot = Path.Combine(Path.GetTempPath(), "Screendrop");
 
-    public static AfterCaptureResult Run(SKBitmap bitmap, string captureType, DateTimeOffset? timestamp = null)
+    public static AfterCaptureResult Run(SKBitmap bitmap, string captureType, int originX, int originY, DateTimeOffset? timestamp = null)
     {
         var time = timestamp ?? DateTimeOffset.Now;
         var settings = SettingsStore.Load();
@@ -66,7 +66,7 @@ internal static class AfterCapturePipeline
             }
         }
 
-        return new AfterCaptureResult(stagingPath, savedPath, copied, compressedSummary);
+        return new AfterCaptureResult(stagingPath, savedPath, copied, compressedSummary, originX, originY);
     }
 
     private static string ResolveExportDirectory(ScreendropSettings settings)
@@ -88,7 +88,7 @@ internal static class AfterCapturePipeline
     }
 }
 
-internal sealed record AfterCaptureResult(string StagingPath, string? SavedPath, bool Copied, string? CompressedSummary)
+internal sealed record AfterCaptureResult(string StagingPath, string? SavedPath, bool Copied, string? CompressedSummary, int OriginX, int OriginY)
 {
     public string ThumbnailPath => SavedPath ?? StagingPath;
 

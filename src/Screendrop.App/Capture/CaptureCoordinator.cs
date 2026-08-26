@@ -83,7 +83,7 @@ internal sealed class CaptureCoordinator
                 TraceLog.Write($"picked {picked.Title} {picked.Bounds}");
 
                 using var bitmap = WindowCapturer.CaptureWindow(picked);
-                var result = AfterCapturePipeline.Run(bitmap, "window");
+                var result = AfterCapturePipeline.Run(bitmap, "window", picked.Bounds.X, picked.Bounds.Y);
                 TraceLog.Write($"pipeline window: {result.DisplaySummary}");
                 NotifyUi("Screenshot captured", result.DisplaySummary, result.ThumbnailPath);
                 InvokeCaptureComplete(result, "window");
@@ -156,7 +156,7 @@ internal sealed class CaptureCoordinator
                         return;
                     }
 
-                    var result = AfterCapturePipeline.Run(crop, "area");
+                    var result = AfterCapturePipeline.Run(crop, "area", region.X, region.Y);
                     TraceLog.Write($"pipeline area: {result.DisplaySummary}");
                     NotifyUi("Screenshot captured", result.DisplaySummary, result.ThumbnailPath);
                     InvokeCaptureComplete(result, "area");
@@ -195,7 +195,7 @@ internal sealed class CaptureCoordinator
                 }
 
                 using var capture = GDICapturer.CaptureMonitor(monitor);
-                var result = AfterCapturePipeline.Run(capture.Bitmap, "fullscreen");
+                var result = AfterCapturePipeline.Run(capture.Bitmap, "fullscreen", monitor.PhysicalBounds.X, monitor.PhysicalBounds.Y);
                 Infrastructure.TraceLog.Write($"pipeline fullscreen: {result.DisplaySummary}");
                 NotifyUi("Screenshot captured", result.DisplaySummary, result.ThumbnailPath);
                 InvokeCaptureComplete(result, "fullscreen");
