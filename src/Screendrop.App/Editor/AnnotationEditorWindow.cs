@@ -19,6 +19,7 @@ internal sealed class AnnotationEditorWindow : Window
     private readonly StackPanel _colorButtons = new() { Orientation = Orientation.Horizontal, Margin = new Thickness(12, 0, 0, 0) };
     private readonly Button _undoButton;
     private readonly Button _redoButton;
+    private readonly TextBlock _zoomLabel;
     private readonly TextBox _textBox;
     private readonly Border _textOverlay;
     private readonly Grid _canvasHost = new();
@@ -55,7 +56,18 @@ internal sealed class AnnotationEditorWindow : Window
         _canvas.Model.Changed += UpdateUndoState;
         UpdateUndoState();
 
-        var toolbar = new StackPanel
+        _zoomLabel = new TextBlock
+        {
+            Text = ZoomText(_canvas.ZoomLevel),
+            Foreground = Brushes.White,
+            VerticalAlignment = VerticalAlignment.Center,
+            MinWidth = 44,
+            TextAlignment = TextAlignment.Center,
+            Margin = new Thickness(4, 0, 4, 0),
+        };
+        _canvas.ZoomChanged += zoom => _zoomLabel.Text = ZoomText(zoom);
+
+        var toolbar = new WrapPanel
         {
             Orientation = Orientation.Horizontal,
             Margin = new Thickness(10, 8, 10, 8),
@@ -75,6 +87,19 @@ internal sealed class AnnotationEditorWindow : Window
         var exportButton = MakeButton("Export…", OnExport);
         exportButton.Margin = new Thickness(6, 0, 0, 0);
         toolbar.Children.Add(exportButton);
+
+        var zoomOutButton = MakeButton("−", (_, _) => _canvas.ZoomOut());
+        zoomOutButton.ToolTip = "Zoom out (Ctrl+− or mouse wheel)";
+        zoomOutButton.Margin = new Thickness(12, 0, 0, 0);
+        toolbar.Children.Add(zoomOutButton);
+        toolbar.Children.Add(_zoomLabel);
+        var zoomInButton = MakeButton("+", (_, _) => _canvas.ZoomIn());
+        zoomInButton.ToolTip = "Zoom in (Ctrl++ or mouse wheel)";
+        toolbar.Children.Add(zoomInButton);
+        var fitButton = MakeButton("Fit", (_, _) => _canvas.ResetZoom());
+        fitButton.ToolTip = "Fit to window (Ctrl+0)";
+        fitButton.Margin = new Thickness(4, 0, 0, 0);
+        toolbar.Children.Add(fitButton);
 
         var closeButton = MakeButton("Close", (_, _) => Close());
         closeButton.Margin = new Thickness(6, 0, 0, 0);
@@ -246,6 +271,8 @@ internal sealed class AnnotationEditorWindow : Window
         _redoButton.IsEnabled = _canvas.Model.CanRedo;
     }
 
+    private static string ZoomText(double zoom) => $"{Math.Round(zoom * 100):0}%";
+
     private void OnWindowKeyDown(object sender, KeyEventArgs e)
     {
         if (_textSessionActive)
@@ -271,6 +298,21 @@ internal sealed class AnnotationEditorWindow : Window
         else if (ctrl && e.Key == Key.Y)
         {
             _canvas.Model.Redo();
+            e.Handled = true;
+        }
+        else if (ctrl && (e.Key == Key.OemPlus || e.Key == Key.Add))
+        {
+            _canvas.ZoomIn();
+            e.Handled = true;
+        }
+        else if (ctrl && (e.Key == Key.OemMinus || e.Key == Key.Subtract))
+        {
+            _canvas.ZoomOut();
+            e.Handled = true;
+        }
+        else if (ctrl && e.Key == Key.D0)
+        {
+            _canvas.ResetZoom();
             e.Handled = true;
         }
         else if (e.Key is Key.Delete or Key.Back && _canvas.Model.Selected is { } selected)
