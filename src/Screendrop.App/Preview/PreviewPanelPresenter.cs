@@ -22,11 +22,12 @@ internal sealed class PreviewPanelPresenter
     public PreviewPanelPresenter(CaptureCoordinator.NotifyHandler notify)
     {
         _notify = notify;
+        _stack.Evicted += OnEvicted;
     }
 
     public void OnCapture(AfterCaptureResult result, string captureType)
     {
-        var entry = new PreviewEntry(result.ThumbnailPath, result.SavedPath, captureType, DateTimeOffset.Now);
+        var entry = new PreviewEntry(result.StagingPath, result.SavedPath, captureType, DateTimeOffset.Now);
         _stack.Push(entry);
         Show();
     }
@@ -151,7 +152,7 @@ internal sealed class PreviewPanelPresenter
                 Directory.CreateDirectory(directory);
 
                 string extension = settings.AutoCompress ? "jpg" : "png";
-                string fileName = FileNaming.BuildFileName(settings.FileNamePattern, DateTimeOffset.Now, entry.CaptureType, extension);
+                string fileName = FileNaming.BuildFileName(settings.FileNamePattern, entry.CapturedAt, entry.CaptureType, extension);
                 string path = FileNaming.ResolveUnique(directory, fileName);
 
                 byte[] bytes = settings.AutoCompress
@@ -160,14 +161,12 @@ internal sealed class PreviewPanelPresenter
                 File.WriteAllBytes(path, bytes);
 
                 Notify("Saved", Path.GetFileName(path));
+                Remove(entry);
             }
             catch (Exception ex)
             {
+                // Mac parity: a failed save keeps the card so the user can retry.
                 Notify("Save failed", ex.Message);
-            }
-            finally
-            {
-                Remove(entry);
             }
         });
     }
@@ -186,14 +185,12 @@ internal sealed class PreviewPanelPresenter
 
                 ClipboardService.SetImage(bitmap);
                 Notify("Copied to clipboard", string.Empty);
+                Remove(entry);
             }
             catch (Exception ex)
             {
+                // Mac parity: a failed copy keeps the card so the user can retry.
                 Notify("Copy failed", ex.Message);
-            }
-            finally
-            {
-                Remove(entry);
             }
         });
     }
@@ -201,6 +198,11 @@ internal sealed class PreviewPanelPresenter
     private void Edit(PreviewEntry entry)
     {
         _notify("Screendrop", "Annotation editor arrives with Phase 5.");
+    }
+
+    private void OnEvicted(PreviewEntry entry)
+    {
+        DeleteStagingFile(entry);
     }
 
     private void Remove(PreviewEntry entry)
@@ -218,12 +220,35 @@ internal sealed class PreviewPanelPresenter
 
     private void RemoveOnUiThread(PreviewEntry entry)
     {
-        _stack.Remove(entry);
+        if (!_stack.Remove(entry))
+        {
+            return;
+        }
+
+        DeleteStagingFile(entry);
         Refresh();
 
         if (_stack.Items.Count == 0)
         {
             _window?.HidePanel();
+        }
+    }
+
+    /// Deletes the staged temporary PNG backing a card. The saved export (if
+    /// any) is never touched - mac's deleteScreenshot has the same split.
+    private static void DeleteStagingFile(PreviewEntry entry)
+    {
+        try
+        {
+            if (File.Exists(entry.StagingPath))
+            {
+                File.Delete(entry.StagingPath);
+                TraceLog.Write($"panel: deleted staging file {entry.StagingPath}");
+            }
+        }
+        catch (Exception ex)
+        {
+            TraceLog.Write($"panel: failed to delete staging file: {ex.Message}");
         }
     }
 
