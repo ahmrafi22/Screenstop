@@ -1,4 +1,5 @@
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Windows;
 using System.Windows.Threading;
@@ -7,6 +8,7 @@ using Screenstop.App.Hotkeys;
 using Screenstop.App.Infrastructure;
 using Screenstop.App.Preview;
 using Screenstop.App.Tray;
+using Screenstop.Core.Diagnostics;
 
 namespace Screenstop.App;
 
@@ -24,7 +26,16 @@ public partial class App : Application
     {
         DispatcherUnhandledException += OnDispatcherUnhandledException;
         AppDomain.CurrentDomain.UnhandledException += (_, args) =>
+        {
             TraceLog.Write($"unhandled appdomain exception: {args.ExceptionObject}");
+            WriteCrashReport(args.ExceptionObject as Exception, args.IsTerminating);
+        };
+        TaskScheduler.UnobservedTaskException += (_, args) =>
+        {
+            TraceLog.Write($"unobserved task exception: {args.Exception}");
+            WriteCrashReport(args.Exception, isTerminating: false);
+            args.SetObserved();
+        };
 
         _mutex = new Mutex(initiallyOwned: true, SingleInstanceMutexName, out var createdNew);
         if (!createdNew)
@@ -88,6 +99,27 @@ public partial class App : Application
     private void OnDispatcherUnhandledException(object sender, DispatcherUnhandledExceptionEventArgs e)
     {
         TraceLog.Write($"unhandled ui exception: {e.Exception}");
+        WriteCrashReport(e.Exception, isTerminating: false);
         e.Handled = true;
     }
+
+    private static void WriteCrashReport(Exception? exception, bool isTerminating)
+    {
+        if (exception is null)
+        {
+            return;
+        }
+
+        var report = new CrashReport(
+            DateTimeOffset.Now,
+            AppVersion,
+            RuntimeInformation.OSDescription,
+            exception.ToString(),
+            isTerminating);
+
+        CrashLog.Write(report);
+    }
+
+    private static string AppVersion =>
+        typeof(App).Assembly.GetName().Version?.ToString() ?? "unknown";
 }
