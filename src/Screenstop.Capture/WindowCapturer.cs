@@ -40,7 +40,6 @@ public static class WindowCapturer
                         return GDICapturer.CaptureRegion(bounds);
                     }
 
-                    var pixels = new byte[checked(w * h * 4)];
                     var bmi = new BITMAPINFO();
                     bmi.bmiHeader.biSize = (uint)Marshal.SizeOf<BITMAPINFOHEADER>();
                     bmi.bmiHeader.biWidth = w;
@@ -49,15 +48,16 @@ public static class WindowCapturer
                     bmi.bmiHeader.biBitCount = 32;
                     bmi.bmiHeader.biCompression = 0;
 
-                    int lines = NativeMethods.GetDIBits(memDc, bitmap, 0, (uint)h, pixels, ref bmi, NativeMethods.DIB_RGB_COLORS);
+                    // Same direct-read as GDICapturer: no intermediate buffer.
+                    var imageInfo = new SKImageInfo(w, h, SKColorType.Bgra8888, SKAlphaType.Opaque);
+                    var skBitmap = new SKBitmap(imageInfo, w * 4);
+
+                    int lines = NativeMethods.GetDIBits(memDc, bitmap, 0, (uint)h, skBitmap.GetPixels(), ref bmi, NativeMethods.DIB_RGB_COLORS);
                     if (lines == 0)
                     {
+                        skBitmap.Dispose();
                         throw new InvalidOperationException("GetDIBits failed after PrintWindow.");
                     }
-
-                    var imageInfo = new SKImageInfo(w, h, SKColorType.Bgra8888, SKAlphaType.Opaque);
-                    var skBitmap = new SKBitmap(imageInfo);
-                    Marshal.Copy(pixels, 0, skBitmap.GetPixels(), pixels.Length);
 
                     return skBitmap;
                 }
@@ -77,9 +77,15 @@ public static class WindowCapturer
         }
     }
 
+    /// Detects a blank/flat PrintWindow result by reading a handful of
+    /// sample scanlines instead of the whole frame. A window that renders
+    /// nothing (or that PrintWindow cannot composite) comes back as a
+    /// single solid color and is better served by the BitBlt fallback.
     private static bool IsPrintWindowFlat(IntPtr memDc, IntPtr bitmap, int w, int h)
     {
-        var pixels = new byte[checked(w * h * 4)];
+        const int SampleRows = 8;
+        int rowCount = Math.Min(SampleRows, h);
+
         var bmi = new BITMAPINFO();
         bmi.bmiHeader.biSize = (uint)Marshal.SizeOf<BITMAPINFOHEADER>();
         bmi.bmiHeader.biWidth = w;
@@ -88,21 +94,26 @@ public static class WindowCapturer
         bmi.bmiHeader.biBitCount = 32;
         bmi.bmiHeader.biCompression = 0;
 
-        int lines = NativeMethods.GetDIBits(memDc, bitmap, 0, (uint)h, pixels, ref bmi, NativeMethods.DIB_RGB_COLORS);
-        if (lines == 0)
-        {
-            return true;
-        }
-
-        int stride = w * 4;
+        var row = new byte[w * 4];
         var seen = new HashSet<uint>();
-        for (int y = 0; y < h; y += 8)
+
+        for (int i = 0; i < rowCount; i++)
         {
+            uint y = rowCount == 1 ? 0 : (uint)(i * (h - 1) / (rowCount - 1));
+            if (NativeMethods.GetDIBits(memDc, bitmap, y, 1, row, ref bmi, NativeMethods.DIB_RGB_COLORS) == 0)
+            {
+                return true;
+            }
+
             for (int x = 0; x < w; x += 8)
             {
-                int o = (y * stride) + (x * 4);
-                uint key = (uint)(pixels[o] | (pixels[o + 1] << 8) | (pixels[o + 2] << 16) | (pixels[o + 3] << 24));
+                int o = x * 4;
+                uint key = (uint)(row[o] | (row[o + 1] << 8) | (row[o + 2] << 16) | (row[o + 3] << 24));
                 seen.Add(key);
+                if (seen.Count > 1)
+                {
+                    return false;
+                }
             }
         }
 
