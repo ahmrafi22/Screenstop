@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Media;
 using Screendrop.App.Infrastructure;
 using Screendrop.Core.Settings;
 
@@ -37,12 +38,14 @@ internal sealed class SettingsWindow : Window
 
         Title = "Screendrop Settings";
         Width = 560;
-        Height = 460;
+        Height = 500;
         MinWidth = 480;
-        MinHeight = 380;
+        MinHeight = 420;
         WindowStartupLocation = WindowStartupLocation.CenterScreen;
         ResizeMode = ResizeMode.CanResize;
         ShowInTaskbar = true;
+        Background = Brush("Sd.Bg");
+        Foreground = Brush("Sd.Text");
 
         _launchAtLogin = new CheckBox
         {
@@ -87,6 +90,7 @@ internal sealed class SettingsWindow : Window
             TickFrequency = 0.05,
             IsSnapToTickEnabled = true,
             VerticalAlignment = VerticalAlignment.Center,
+            Style = (Style)Application.Current.Resources["Sd.Slider"],
         };
         _quality.ValueChanged += (_, _) => _qualityLabel.Text = QualityText(_quality.Value);
 
@@ -116,16 +120,18 @@ internal sealed class SettingsWindow : Window
     private UIElement BuildLayout()
     {
         var tabs = new TabControl { Margin = new Thickness(12) };
+        var tabStyle = (Style)Application.Current.Resources["Sd.TabItem"];
 
-        tabs.Items.Add(new TabItem { Header = "General", Content = BuildGeneralTab() });
-        tabs.Items.Add(new TabItem { Header = "Screenshots", Content = BuildScreenshotsTab() });
-        tabs.Items.Add(new TabItem { Header = "Hotkeys", Content = BuildHotkeysTab() });
-        tabs.Items.Add(new TabItem { Header = "About", Content = BuildAboutTab() });
+        tabs.Items.Add(new TabItem { Header = "General", Content = BuildGeneralTab(), Style = tabStyle });
+        tabs.Items.Add(new TabItem { Header = "Screenshots", Content = BuildScreenshotsTab(), Style = tabStyle });
+        tabs.Items.Add(new TabItem { Header = "Hotkeys", Content = BuildHotkeysTab(), Style = tabStyle });
+        tabs.Items.Add(new TabItem { Header = "About", Content = BuildAboutTab(), Style = tabStyle });
 
         var saveButton = new Button
         {
             Content = "Save",
-            Padding = new Thickness(20, 6, 20, 6),
+            Style = (Style)Application.Current.Resources["Sd.AccentButton"],
+            Padding = new Thickness(22, 6, 22, 6),
             Margin = new Thickness(0, 0, 8, 0),
             IsDefault = true,
         };
@@ -134,7 +140,8 @@ internal sealed class SettingsWindow : Window
         var cancelButton = new Button
         {
             Content = "Cancel",
-            Padding = new Thickness(20, 6, 20, 6),
+            Style = (Style)Application.Current.Resources["Sd.Button"],
+            Padding = new Thickness(22, 6, 22, 6),
             IsCancel = true,
         };
 
@@ -158,12 +165,7 @@ internal sealed class SettingsWindow : Window
     {
         var stack = new StackPanel { Margin = new Thickness(16) };
         stack.Children.Add(_launchAtLogin);
-        stack.Children.Add(new TextBlock
-        {
-            Text = "Screendrop lives in the system tray. Capture with the hotkeys on the Hotkeys tab.",
-            TextWrapping = TextWrapping.Wrap,
-            Foreground = SystemColors.GrayTextBrush,
-        });
+        stack.Children.Add(MutedText("Screendrop lives in the system tray. Capture with the hotkeys on the Hotkeys tab."));
         return stack;
     }
 
@@ -188,7 +190,13 @@ internal sealed class SettingsWindow : Window
 
         stack.Children.Add(Label("Save folder"));
         var folderRow = new DockPanel { Margin = new Thickness(0, 0, 0, 12) };
-        var browse = new Button { Content = "Browse…", Padding = new Thickness(12, 2, 12, 2), Margin = new Thickness(8, 0, 0, 0) };
+        var browse = new Button
+        {
+            Content = "Browse…",
+            Style = (Style)Application.Current.Resources["Sd.Button"],
+            Padding = new Thickness(12, 3, 12, 3),
+            Margin = new Thickness(8, 0, 0, 0),
+        };
         browse.Click += OnBrowseFolder;
         DockPanel.SetDock(browse, Dock.Right);
         folderRow.Children.Add(browse);
@@ -197,12 +205,7 @@ internal sealed class SettingsWindow : Window
 
         stack.Children.Add(Label("File name pattern"));
         stack.Children.Add(_fileNamePattern);
-        stack.Children.Add(new TextBlock
-        {
-            Text = "Tokens: {timestamp}  {date}  {time}  {type}",
-            Foreground = SystemColors.GrayTextBrush,
-            Margin = new Thickness(0, 4, 0, 0),
-        });
+        stack.Children.Add(MutedText("Tokens: {timestamp}  {date}  {time}  {type}", topMargin: 4));
 
         return stack;
     }
@@ -217,13 +220,9 @@ internal sealed class SettingsWindow : Window
         AddHotkeyRow(grid, 1, "Capture window", _windowHotkey);
         AddHotkeyRow(grid, 2, "Capture area", _areaHotkey);
 
-        grid.Children.Add(new TextBlock
-        {
-            Text = "Click a box and press the new combination. Backspace resets it to the default.",
-            Foreground = SystemColors.GrayTextBrush,
-            TextWrapping = TextWrapping.Wrap,
-            Margin = new Thickness(0, 12, 0, 0),
-        });
+        grid.Children.Add(MutedText(
+            "Click a box and press the new combination. Backspace resets it to the default.",
+            topMargin: 12));
         Grid.SetRow(grid.Children[^1], 3);
         Grid.SetColumnSpan(grid.Children[^1], 2);
 
@@ -261,22 +260,14 @@ internal sealed class SettingsWindow : Window
             Margin = new Thickness(0, 0, 0, 4),
         });
 
-        stack.Children.Add(new TextBlock
-        {
-            Text = $"Version {typeof(SettingsWindow).Assembly.GetName().Version}",
-            Margin = new Thickness(0, 0, 0, 12),
-        });
+        stack.Children.Add(MutedText($"Version {typeof(SettingsWindow).Assembly.GetName().Version}", bottomMargin: 12));
 
         stack.Children.Add(LinkButton("Open trace log", TraceLogPath));
         stack.Children.Add(LinkButton("Open crash reports", CrashLog.DirectoryPath));
 
-        stack.Children.Add(new TextBlock
-        {
-            Text = "Screenshots stay on this machine — Screendrop has no sharing or upload features.",
-            Foreground = SystemColors.GrayTextBrush,
-            TextWrapping = TextWrapping.Wrap,
-            Margin = new Thickness(0, 12, 0, 0),
-        });
+        stack.Children.Add(MutedText(
+            "Screenshots stay on this machine — Screendrop has no sharing or upload features.",
+            topMargin: 12));
 
         return stack;
     }
@@ -289,13 +280,26 @@ internal sealed class SettingsWindow : Window
         var button = new Button
         {
             Content = text,
+            Style = (Style)Application.Current.Resources["Sd.Button"],
             HorizontalAlignment = HorizontalAlignment.Left,
-            Padding = new Thickness(12, 2, 12, 2),
+            Padding = new Thickness(12, 4, 12, 4),
             Margin = new Thickness(0, 0, 0, 6),
         };
         button.Click += (_, _) => OpenFolderOrFile(path);
         return button;
     }
+
+    /// Muted helper text used across all tabs.
+    private static TextBlock MutedText(string text, double topMargin = 0, double bottomMargin = 0) => new()
+    {
+        Text = text,
+        TextWrapping = TextWrapping.Wrap,
+        FontSize = 11.5,
+        Foreground = (Brush)Application.Current.Resources["Sd.TextMuted"],
+        Margin = new Thickness(0, topMargin, 0, bottomMargin),
+    };
+
+    private static Brush Brush(string key) => (Brush)Application.Current.Resources[key];
 
     private static void OpenFolderOrFile(string path)
     {

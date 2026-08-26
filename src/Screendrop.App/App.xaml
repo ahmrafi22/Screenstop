@@ -151,6 +151,179 @@
                 <Setter Property="Margin" Value="8,4,8,4"/>
                 <Setter Property="Background" Value="{StaticResource Sd.BorderSoft}"/>
             </Style>
+
+            <!-- ===== Form controls (settings window) ===== -->
+
+            <!-- Implicit text field: dark input on every TextBox -->
+            <Style TargetType="TextBox">
+                <Setter Property="Background" Value="{StaticResource Sd.BgRaised}"/>
+                <Setter Property="Foreground" Value="{StaticResource Sd.Text}"/>
+                <Setter Property="BorderBrush" Value="{StaticResource Sd.Border}"/>
+                <Setter Property="BorderThickness" Value="1"/>
+                <Setter Property="CaretBrush" Value="{StaticResource Sd.Text}"/>
+                <Setter Property="SelectionBrush" Value="{StaticResource Sd.Accent}"/>
+                <Setter Property="Padding" Value="6,3,6,3"/>
+                <Setter Property="FontSize" Value="12"/>
+            </Style>
+
+            <!-- Checkbox with a drawn check so it reads on dark surfaces -->
+            <Style TargetType="CheckBox">
+                <Setter Property="Foreground" Value="{StaticResource Sd.Text}"/>
+                <Setter Property="FontSize" Value="12"/>
+                <Setter Property="Cursor" Value="Hand"/>
+                <Setter Property="VerticalContentAlignment" Value="Center"/>
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="CheckBox">
+                            <StackPanel Orientation="Horizontal" Background="Transparent">
+                                <Border x:Name="Box"
+                                        Width="16" Height="16"
+                                        CornerRadius="4"
+                                        BorderThickness="1"
+                                        Background="{StaticResource Sd.BgRaised}"
+                                        BorderBrush="{StaticResource Sd.Border}"
+                                        VerticalAlignment="Center">
+                                    <Path x:Name="Check"
+                                          Data="M2.5,7 L6,10.5 L11,3.5"
+                                          Stroke="{StaticResource Sd.Text}"
+                                          StrokeThickness="1.8"
+                                          StrokeStartLineCap="Round"
+                                          StrokeEndLineCap="Round"
+                                          Visibility="Collapsed"
+                                          Stretch="None"/>
+                                </Border>
+                                <ContentPresenter Margin="7,0,0,0"
+                                                  VerticalAlignment="Center"
+                                                  RecognizesAccessKey="True"/>
+                            </StackPanel>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsChecked" Value="True">
+                                    <Setter TargetName="Check" Property="Visibility" Value="Visible"/>
+                                    <Setter TargetName="Box" Property="Background" Value="{StaticResource Sd.AccentSoft}"/>
+                                    <Setter TargetName="Box" Property="BorderBrush" Value="{StaticResource Sd.Accent}"/>
+                                </Trigger>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter TargetName="Box" Property="BorderBrush" Value="{StaticResource Sd.TextMuted}"/>
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+
+            <!-- Tab header pill -->
+            <Style x:Key="Sd.TabItem" TargetType="TabItem">
+                <Setter Property="Foreground" Value="{StaticResource Sd.TextMuted}"/>
+                <Setter Property="FontSize" Value="12"/>
+                <Setter Property="Cursor" Value="Hand"/>
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="TabItem">
+                            <Border x:Name="Chrome"
+                                    Background="Transparent"
+                                    CornerRadius="6"
+                                    Padding="14,6,14,6"
+                                    Margin="0,0,4,0">
+                                <ContentPresenter ContentSource="Header"
+                                                  HorizontalAlignment="Center"
+                                                  VerticalAlignment="Center"/>
+                            </Border>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsSelected" Value="True">
+                                    <Setter TargetName="Chrome" Property="Background" Value="{StaticResource Sd.Panel}"/>
+                                    <Setter Property="Foreground" Value="{StaticResource Sd.Text}"/>
+                                </Trigger>
+                                <MultiTrigger>
+                                    <MultiTrigger.Conditions>
+                                        <Condition Property="IsMouseOver" Value="True"/>
+                                        <Condition Property="IsSelected" Value="False"/>
+                                    </MultiTrigger.Conditions>
+                                    <Setter TargetName="Chrome" Property="Background" Value="{StaticResource Sd.PanelHover}"/>
+                                </MultiTrigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+
+            <!-- Tab control shell: pill header row + rounded content card -->
+            <Style TargetType="TabControl">
+                <Setter Property="Background" Value="Transparent"/>
+                <Setter Property="BorderThickness" Value="0"/>
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="TabControl">
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="*"/>
+                                </Grid.RowDefinitions>
+                                <StackPanel IsItemsHost="True" Margin="0,0,0,10"/>
+                                <Border Grid.Row="1"
+                                        Background="{StaticResource Sd.BgRaised}"
+                                        BorderBrush="{StaticResource Sd.BorderSoft}"
+                                        BorderThickness="1"
+                                        CornerRadius="8"
+                                        Padding="4">
+                                    <ContentPresenter ContentSource="SelectedContent"/>
+                                </Border>
+                            </Grid>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+
+            <!-- Slider track/thumb tinted for dark surfaces -->
+            <Style x:Key="Sd.SliderThumb" TargetType="Thumb">
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="Thumb">
+                            <Ellipse Width="13" Height="13"
+                                     Fill="{StaticResource Sd.Text}"
+                                     Stroke="{StaticResource Sd.Accent}"
+                                     StrokeThickness="2"/>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+            <Style x:Key="Sd.Slider" TargetType="Slider">
+                <Setter Property="Foreground" Value="{StaticResource Sd.Accent}"/>
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="Slider">
+                            <Grid VerticalAlignment="Center">
+                                <Border Height="4"
+                                        CornerRadius="2"
+                                        Background="{StaticResource Sd.Border}"
+                                        VerticalAlignment="Center"/>
+                                <Track x:Name="PART_Track">
+                                    <Track.DecreaseRepeatButton>
+                                        <RepeatButton Command="Slider.DecreaseLarge" Opacity="0">
+                                            <RepeatButton.Template>
+                                                <ControlTemplate TargetType="RepeatButton">
+                                                    <Rectangle Fill="Transparent" Height="10"/>
+                                                </ControlTemplate>
+                                            </RepeatButton.Template>
+                                        </RepeatButton>
+                                    </Track.DecreaseRepeatButton>
+                                    <Track.IncreaseRepeatButton>
+                                        <RepeatButton Command="Slider.IncreaseLarge" Opacity="0">
+                                            <RepeatButton.Template>
+                                                <ControlTemplate TargetType="RepeatButton">
+                                                    <Rectangle Fill="Transparent" Height="10"/>
+                                                </ControlTemplate>
+                                            </RepeatButton.Template>
+                                        </RepeatButton>
+                                    </Track.IncreaseRepeatButton>
+                                    <Track.Thumb>
+                                        <Thumb Style="{StaticResource Sd.SliderThumb}"/>
+                                    </Track.Thumb>
+                                </Track>
+                            </Grid>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
         </ResourceDictionary>
     </Application.Resources>
 </Application>
