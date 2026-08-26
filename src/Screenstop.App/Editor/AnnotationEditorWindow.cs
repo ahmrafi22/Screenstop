@@ -195,9 +195,12 @@ internal sealed class AnnotationEditorWindow : Window
         {
             (AnnotationTool.Select, ToolIcon.SelectCursor(), "V"),
             (AnnotationTool.Rectangle, ToolIcon.Rectangle(), "R"),
+            (AnnotationTool.FilledRectangle, ToolIcon.FilledRectangle(), "F"),
             (AnnotationTool.Ellipse, ToolIcon.Ellipse(), "E"),
+            (AnnotationTool.Line, ToolIcon.Line(), "L"),
             (AnnotationTool.Arrow, ToolIcon.Arrow(), "A"),
             (AnnotationTool.Freehand, ToolIcon.Freehand(), "D"),
+            (AnnotationTool.Highlight, ToolIcon.Highlight(), "H"),
             (AnnotationTool.Text, ToolIcon.Text(), "T"),
             (AnnotationTool.NumberedCircle, ToolIcon.StepMarker(), "N"),
             (AnnotationTool.Pixelate, ToolIcon.Pixelate(), "P"),
@@ -286,9 +289,12 @@ internal sealed class AnnotationEditorWindow : Window
     {
         AnnotationTool.Select => "Click an annotation to select it · Del removes · Ctrl+Z undoes",
         AnnotationTool.Rectangle => "Drag to draw a rectangle",
+        AnnotationTool.FilledRectangle => "Drag to draw a solid rectangle",
         AnnotationTool.Ellipse => "Drag to draw an ellipse",
+        AnnotationTool.Line => "Drag to draw a straight line",
         AnnotationTool.Arrow => "Drag to draw an arrow",
         AnnotationTool.Freehand => "Draw freely with the mouse",
+        AnnotationTool.Highlight => "Drag over text to highlight it",
         AnnotationTool.Text => "Click where the text should start",
         AnnotationTool.NumberedCircle => "Click to place the next step marker",
         AnnotationTool.Pixelate => "Drag over an area to pixelate it",
@@ -516,9 +522,12 @@ internal sealed class AnnotationEditorWindow : Window
         {
             Key.V => AnnotationTool.Select,
             Key.R => AnnotationTool.Rectangle,
+            Key.F => AnnotationTool.FilledRectangle,
             Key.E => AnnotationTool.Ellipse,
+            Key.L => AnnotationTool.Line,
             Key.A => AnnotationTool.Arrow,
             Key.D => AnnotationTool.Freehand,
+            Key.H => AnnotationTool.Highlight,
             Key.T => AnnotationTool.Text,
             Key.N => AnnotationTool.NumberedCircle,
             Key.P => AnnotationTool.Pixelate,
@@ -638,6 +647,10 @@ internal static class ToolIcon
 
     public static FrameworkElement Rectangle() => Host(16, 16, Stroked("M2,3.5 L14,3.5 L14,12.5 L2,12.5 Z"));
 
+    public static FrameworkElement FilledRectangle() => Host(16, 16, Filled("M2,3.5 L14,3.5 L14,12.5 L2,12.5 Z"));
+
+    public static FrameworkElement Highlight() => Host(16, 16, Filled("M2,6 L14,6 L14,10 L2,10 Z"));
+
     public static FrameworkElement Ellipse() => Host(16, 16, StrokedEllipse(12.5, 9.5));
 
     private static System.Windows.Shapes.Ellipse StrokedEllipse(double width, double height)
@@ -653,6 +666,8 @@ internal static class ToolIcon
     }
 
     public static FrameworkElement Arrow() => Host(16, 16, Stroked("M2.5,13.5 L12,4 M6.5,3.5 L12.5,3.5 L12.5,9.5"));
+
+    public static FrameworkElement Line() => Host(16, 16, Stroked("M2.5,13.5 L13.5,2.5"));
 
     public static FrameworkElement Freehand() => Host(16, 16, Stroked(
         "M1.5,11.5 C3.5,5 6,5 8,8.5 C9.5,11.2 11.5,10.8 14.5,4.5"));

@@ -15,6 +15,7 @@ public static class AnnotationRenderer
     private const double PixelateBlockFactor = 0.015;
     private const double BlurSigmaFactor = 0.012;
     private const double BlurFeatherFactor = 0.12;
+    private const byte HighlightAlpha = 110;
 
     /// Renders the source image with all annotations at full resolution.
     public static SKBitmap Render(SKBitmap source, AnnotationDocument document)
@@ -74,6 +75,15 @@ public static class AnnotationRenderer
                 case AnnotationTool.Blur:
                     DrawBlur(canvas, source, annotation, imageWidth, imageHeight, maxDim);
                     break;
+                case AnnotationTool.Line:
+                    DrawLine(canvas, annotation, imageWidth, imageHeight, maxDim);
+                    break;
+                case AnnotationTool.Highlight:
+                    DrawHighlight(canvas, annotation, imageWidth, imageHeight, maxDim);
+                    break;
+                case AnnotationTool.FilledRectangle:
+                    DrawFilledRectangle(canvas, annotation, imageWidth, imageHeight, maxDim);
+                    break;
             }
         }
     }
@@ -108,6 +118,50 @@ public static class AnnotationRenderer
             IsAntialias = true,
         };
         canvas.DrawOval(ToPixelRect(a.Rect, w, h), paint);
+    }
+
+    /// Semi-transparent marker stroke (mac highlight parity). Alpha is
+    /// baked into the paint rather than the color so the palette swatches
+    /// stay fully opaque in the toolbar.
+    private static void DrawHighlight(SKCanvas canvas, Annotation a, int w, int h, double maxDim)
+    {
+        using var paint = new SKPaint
+        {
+            Style = SKPaintStyle.StrokeAndFill,
+            StrokeWidth = StrokePx(a, maxDim),
+            Color = ToColor(a.Color).WithAlpha(HighlightAlpha),
+            IsAntialias = true,
+        };
+        canvas.DrawRect(ToPixelRect(a.Rect, w, h), paint);
+    }
+
+    private static void DrawFilledRectangle(SKCanvas canvas, Annotation a, int w, int h, double maxDim)
+    {
+        using var paint = new SKPaint
+        {
+            Style = SKPaintStyle.Fill,
+            Color = ToColor(a.Color),
+            IsAntialias = true,
+        };
+        canvas.DrawRect(ToPixelRect(a.Rect, w, h), paint);
+    }
+
+    private static void DrawLine(SKCanvas canvas, Annotation a, int w, int h, double maxDim)
+    {
+        float x1 = (float)(a.Start.X * w);
+        float y1 = (float)(a.Start.Y * h);
+        float x2 = (float)(a.End.X * w);
+        float y2 = (float)(a.End.Y * h);
+
+        using var paint = new SKPaint
+        {
+            Style = SKPaintStyle.Stroke,
+            StrokeWidth = StrokePx(a, maxDim),
+            StrokeCap = SKStrokeCap.Round,
+            Color = ToColor(a.Color),
+            IsAntialias = true,
+        };
+        canvas.DrawLine(x1, y1, x2, y2, paint);
     }
 
     private static void DrawArrow(SKCanvas canvas, Annotation a, int w, int h, double maxDim)
