@@ -71,8 +71,29 @@ internal sealed class TrayController : IDisposable
         try
         {
             using var source = new Bitmap(imagePath);
-            using var scaled = new Bitmap(source, new System.Drawing.Size(ThumbnailMaxDimension, ThumbnailMaxDimension));
-            return scaled.GetHicon();
+
+            // The notification icon contract is exactly 32x32 (anything else
+            // throws), so the capture is aspect-fit inside a transparent
+            // 32x32 canvas instead of being squashed into a square.
+            using var canvas = new Bitmap(ThumbnailMaxDimension, ThumbnailMaxDimension);
+            double scale = Math.Min(
+                (double)ThumbnailMaxDimension / source.Width,
+                (double)ThumbnailMaxDimension / source.Height);
+            int width = Math.Max(1, (int)Math.Round(source.Width * scale));
+            int height = Math.Max(1, (int)Math.Round(source.Height * scale));
+
+            using (var graphics = System.Drawing.Graphics.FromImage(canvas))
+            {
+                graphics.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic;
+                graphics.DrawImage(
+                    source,
+                    (ThumbnailMaxDimension - width) / 2,
+                    (ThumbnailMaxDimension - height) / 2,
+                    width,
+                    height);
+            }
+
+            return canvas.GetHicon();
         }
         catch
         {
