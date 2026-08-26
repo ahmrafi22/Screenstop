@@ -66,10 +66,45 @@ public class PreviewStackTests
         stack.Changed += () => changes++;
 
         Assert.True(stack.Remove(a));
-        Assert.Equal(1, stack.Items.Count);
+        Assert.Single(stack.Items);
         Assert.Equal(1, changes);
         Assert.False(stack.Remove(a));
         Assert.Equal(1, changes);
+    }
+
+    [Fact]
+    public void Eviction_raises_evicted_with_oldest_entry()
+    {
+        var stack = new PreviewStack(maxCount: 2);
+        var a = Entry("a");
+        var b = Entry("b");
+        var c = Entry("c");
+
+        PreviewEntry? evicted = null;
+        stack.Evicted += e => evicted = e;
+
+        stack.Push(a);
+        stack.Push(b);
+        Assert.Null(evicted);
+
+        stack.Push(c);
+        Assert.NotNull(evicted);
+        Assert.EndsWith("a.png", evicted!.ImagePath);
+        Assert.DoesNotContain(stack.Items, i => i.ImagePath.EndsWith("a.png"));
+    }
+
+    [Fact]
+    public void Remove_does_not_raise_evicted()
+    {
+        var stack = new PreviewStack(maxCount: 4);
+        var a = Entry("a");
+        stack.Push(a);
+
+        int evictions = 0;
+        stack.Evicted += _ => evictions++;
+
+        stack.Remove(a);
+        Assert.Equal(0, evictions);
     }
 
     [Fact]

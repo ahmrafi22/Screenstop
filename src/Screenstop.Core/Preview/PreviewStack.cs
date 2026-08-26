@@ -12,6 +12,10 @@ public sealed class PreviewStack
 
     public event Action? Changed;
 
+    /// Raised when an entry is evicted to make room for a newer one. The
+    /// evicted entry has already been removed from <see cref="Items"/>.
+    public event Action<PreviewEntry>? Evicted;
+
     public IReadOnlyList<PreviewEntry> Items => _items;
 
     public PreviewEntry? Newest => _items.Count > 0 ? _items[0] : null;
@@ -21,7 +25,9 @@ public sealed class PreviewStack
         _items.Insert(0, entry);
         if (_items.Count > _maxCount)
         {
+            var evicted = _items[_items.Count - 1];
             _items.RemoveAt(_items.Count - 1);
+            Evicted?.Invoke(evicted);
         }
 
         Changed?.Invoke();
