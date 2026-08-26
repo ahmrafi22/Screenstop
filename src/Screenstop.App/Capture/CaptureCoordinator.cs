@@ -128,39 +128,43 @@ internal sealed class CaptureCoordinator
                 TraceLog.Write("area: full capture done, invoking dispatcher");
                 var captured = full.Bitmap;
 
+                PixelRect? rect = null;
                 dispatcher.Invoke(() =>
                 {
                     TraceLog.Write("area: on UI thread, showing overlay");
-                    var rect = AreaSelectionController.Pick(monitor);
+                    rect = AreaSelectionController.Pick(monitor);
                     TraceLog.Write("area: overlay closed");
-                    if (rect is null)
-                    {
-                        TraceLog.Write("area selection cancelled");
-                        return;
-                    }
-
-                    var region = PixelRect.Intersect(rect.Value, monitor.PhysicalBounds);
-                    if (region.IsEmpty)
-                    {
-                        NotifyUi("Capture failed", "Invalid selection region.");
-                        return;
-                    }
-
-                    var offsetX = region.X - monitor.PhysicalBounds.X;
-                    var offsetY = region.Y - monitor.PhysicalBounds.Y;
-
-                    using var crop = new SKBitmap(new SKImageInfo(region.Width, region.Height, SKColorType.Bgra8888, SKAlphaType.Opaque));
-                    if (!captured.ExtractSubset(crop, new SKRectI(offsetX, offsetY, offsetX + region.Width, offsetY + region.Height)))
-                    {
-                        NotifyUi("Capture failed", "Could not extract selection.");
-                        return;
-                    }
-
-                    var result = AfterCapturePipeline.Run(crop, "area", region.X, region.Y);
-                    TraceLog.Write($"pipeline area: {result.DisplaySummary}");
-                    NotifyUi("Screenshot captured", result.DisplaySummary, result.ThumbnailPath);
-                    InvokeCaptureComplete(result, "area");
                 });
+
+                if (rect is null)
+                {
+                    TraceLog.Write("area selection cancelled");
+                    return;
+                }
+
+                var region = PixelRect.Intersect(rect.Value, monitor.PhysicalBounds);
+                if (region.IsEmpty)
+                {
+                    NotifyUi("Capture failed", "Invalid selection region.");
+                    return;
+                }
+
+                var offsetX = region.X - monitor.PhysicalBounds.X;
+                var offsetY = region.Y - monitor.PhysicalBounds.Y;
+
+                using var crop = new SKBitmap(new SKImageInfo(region.Width, region.Height, SKColorType.Bgra8888, SKAlphaType.Opaque));
+                if (!captured.ExtractSubset(crop, new SKRectI(offsetX, offsetY, offsetX + region.Width, offsetY + region.Height)))
+                {
+                    NotifyUi("Capture failed", "Could not extract selection.");
+                    return;
+                }
+
+                // Crop + pipeline (PNG encode, file writes, clipboard) run on
+                // this background thread; only the overlay needed the UI thread.
+                var result = AfterCapturePipeline.Run(crop, "area", region.X, region.Y);
+                TraceLog.Write($"pipeline area: {result.DisplaySummary}");
+                NotifyUi("Screenshot captured", result.DisplaySummary, result.ThumbnailPath);
+                InvokeCaptureComplete(result, "area");
             }
             catch (Exception ex)
             {
