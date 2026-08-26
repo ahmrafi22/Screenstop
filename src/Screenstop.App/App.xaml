@@ -5,20 +5,23 @@
              ShutdownMode="OnExplicitShutdown">
     <Application.Resources>
         <ResourceDictionary>
-            <!-- ===== Palette (slate dark + blue accent) ===== -->
-            <SolidColorBrush x:Key="Sd.Bg" Color="#FF0B1220"/>
-            <SolidColorBrush x:Key="Sd.BgRaised" Color="#FF111827"/>
-            <SolidColorBrush x:Key="Sd.Panel" Color="#FF1F2937"/>
-            <SolidColorBrush x:Key="Sd.PanelHover" Color="#FF2B3648"/>
-            <SolidColorBrush x:Key="Sd.PanelPressed" Color="#FF374151"/>
-            <SolidColorBrush x:Key="Sd.Border" Color="#FF374151"/>
-            <SolidColorBrush x:Key="Sd.BorderSoft" Color="#FF2A3441"/>
-            <SolidColorBrush x:Key="Sd.Text" Color="#FFF3F4F6"/>
-            <SolidColorBrush x:Key="Sd.TextMuted" Color="#FF9CA3AF"/>
-            <SolidColorBrush x:Key="Sd.Accent" Color="#FF3B82F6"/>
-            <SolidColorBrush x:Key="Sd.AccentHover" Color="#FF2563EB"/>
-            <SolidColorBrush x:Key="Sd.AccentPressed" Color="#FF1D4ED8"/>
-            <SolidColorBrush x:Key="Sd.AccentSoft" Color="#FF1E3A5F"/>
+            <!-- ===== Palette (mac Screenstop parity) =====
+                 Workspace ground: AnnoTheme.neutralSolid dark (#292929 = white*0.16).
+                 Accent/selection: tl color selection stroke, #3182ED.
+                 Text: Apple label/secondaryLabel equivalents. -->
+            <SolidColorBrush x:Key="Sd.Bg" Color="#FF292929"/>
+            <SolidColorBrush x:Key="Sd.BgRaised" Color="#FF1E1E20"/>
+            <SolidColorBrush x:Key="Sd.Panel" Color="#FF38383A"/>
+            <SolidColorBrush x:Key="Sd.PanelHover" Color="#FF444446"/>
+            <SolidColorBrush x:Key="Sd.PanelPressed" Color="#FF505052"/>
+            <SolidColorBrush x:Key="Sd.Border" Color="#FF48484A"/>
+            <SolidColorBrush x:Key="Sd.BorderSoft" Color="#FF3A3A3C"/>
+            <SolidColorBrush x:Key="Sd.Text" Color="#FFF5F5F7"/>
+            <SolidColorBrush x:Key="Sd.TextMuted" Color="#FF98989D"/>
+            <SolidColorBrush x:Key="Sd.Accent" Color="#FF3182ED"/>
+            <SolidColorBrush x:Key="Sd.AccentHover" Color="#FF2873D6"/>
+            <SolidColorBrush x:Key="Sd.AccentPressed" Color="#FF2063BC"/>
+            <SolidColorBrush x:Key="Sd.AccentSoft" Color="#FF273E54"/>
 
             <CornerRadius x:Key="Sd.Radius">6</CornerRadius>
             <Thickness x:Key="Sd.ButtonPadding">10,5,10,5</Thickness>

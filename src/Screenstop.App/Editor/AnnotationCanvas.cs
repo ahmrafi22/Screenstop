@@ -185,7 +185,8 @@ internal sealed class AnnotationCanvas : SKElement
     protected override void OnPaintSurface(SKPaintSurfaceEventArgs e)
     {
         var canvas = e.Surface.Canvas;
-        canvas.Clear(new SKColor(17, 24, 39));
+        // Neutral desaturated ground (mac AnnoTheme.neutralSolid dark: white*0.16).
+        canvas.Clear(new SKColor(41, 41, 41));
 
         if (_fullBitmap is null)
         {
@@ -707,7 +708,7 @@ internal sealed class AnnotationCanvas : SKElement
         using var borderPaint = new SKPaint
         {
             Style = SKPaintStyle.Stroke,
-            Color = new SKColor(59, 130, 246),
+            Color = new SKColor(0x31, 0x82, 0xED), // mac selectionStroke #3182ED
             StrokeWidth = 2f,
             IsAntialias = true,
         };
@@ -753,23 +754,24 @@ internal sealed class AnnotationCanvas : SKElement
         using var dashPaint = new SKPaint
         {
             Style = SKPaintStyle.Stroke,
-            Color = new SKColor(59, 130, 246),
+            Color = new SKColor(0x31, 0x82, 0xED), // mac selectionStroke #3182ED
             StrokeWidth = 1.5f,
             IsAntialias = true,
             PathEffect = SKPathEffect.CreateDash(new[] { 6f, 4f }, 0),
         };
         canvas.DrawRect(rect, dashPaint);
 
+        // Handles read as holes punched in the frame (mac handleFill dark #2A2A2C).
         using var handlePaint = new SKPaint
         {
             Style = SKPaintStyle.Fill,
-            Color = SKColors.White,
+            Color = new SKColor(0x2A, 0x2A, 0x2C),
             IsAntialias = true,
         };
         using var handleBorder = new SKPaint
         {
             Style = SKPaintStyle.Stroke,
-            Color = new SKColor(59, 130, 246),
+            Color = new SKColor(0x31, 0x82, 0xED),
             StrokeWidth = 1.5f,
             IsAntialias = true,
         };
