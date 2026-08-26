@@ -5,6 +5,7 @@ using Screendrop.App.Capture;
 using Screendrop.App.Editor;
 using Screendrop.App.Infrastructure;
 using Screendrop.Capture;
+using Screendrop.Core.Annotations;
 using Screendrop.Core.Geometry;
 using Screendrop.Core.History;
 using Screendrop.Core.Preview;
@@ -108,7 +109,8 @@ internal sealed class PreviewPanelPresenter
         var cards = new List<(PreviewEntry Entry, BitmapSource? Thumbnail)>();
         foreach (var entry in _stack.Items)
         {
-            cards.Add((entry, BitmapSourceConverter.FromFile(entry.ImagePath, 320)));
+            // Composited so the card reflects any saved annotation edits.
+            cards.Add((entry, BitmapSourceConverter.FromFileComposited(entry.ImagePath, 320)));
         }
 
         _window?.SetCards(cards);
@@ -146,7 +148,8 @@ internal sealed class PreviewPanelPresenter
         {
             try
             {
-                using var bitmap = SKBitmap.Decode(entry.ImagePath);
+                // Composited: the saved file carries any annotation edits.
+                using var bitmap = AnnotationExport.LoadComposited(entry.ImagePath);
                 if (bitmap is null)
                 {
                     throw new InvalidOperationException("Could not load the image.");
@@ -184,7 +187,8 @@ internal sealed class PreviewPanelPresenter
         {
             try
             {
-                using var bitmap = SKBitmap.Decode(entry.ImagePath);
+                // Composited: the clipboard carries any annotation edits.
+                using var bitmap = AnnotationExport.LoadComposited(entry.ImagePath);
                 if (bitmap is null)
                 {
                     throw new InvalidOperationException("Could not load the image.");
@@ -211,10 +215,10 @@ internal sealed class PreviewPanelPresenter
             return;
         }
 
-        var editor = new AnnotationEditorWindow(imagePath) { SaveInPlace = true };
+        var editor = new AnnotationEditorWindow(imagePath);
         editor.Saved += _ =>
         {
-            // The staged file now holds the annotated image: refresh the card.
+            // Edits live in the sidecar now; refresh so the card shows them.
             Refresh();
             _notify("Annotated", Path.GetFileName(imagePath));
         };
@@ -255,8 +259,9 @@ internal sealed class PreviewPanelPresenter
         }
     }
 
-    /// Deletes the staged temporary PNG backing a card. The saved export (if
-    /// any) is never touched - mac's deleteScreenshot has the same split.
+    /// Deletes the staged temporary PNG backing a card plus its annotation
+    /// sidecar (if any). The saved export (if any) is never touched - mac's
+    /// deleteScreenshot has the same split.
     private static void DeleteStagingFile(PreviewEntry entry)
     {
         try
@@ -265,6 +270,13 @@ internal sealed class PreviewPanelPresenter
             {
                 File.Delete(entry.StagingPath);
                 TraceLog.Write($"panel: deleted staging file {entry.StagingPath}");
+            }
+
+            string sidecar = AnnotationDocument.SidecarPathFor(entry.StagingPath);
+            if (File.Exists(sidecar))
+            {
+                File.Delete(sidecar);
+                TraceLog.Write($"panel: deleted sidecar {sidecar}");
             }
         }
         catch (Exception ex)
