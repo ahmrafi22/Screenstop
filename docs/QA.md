@@ -82,6 +82,12 @@ Manual (needs an unlocked desktop):
       Shift+Enter adds a line
 - [ ] Color swatches change the active color and recolor the selection
 - [ ] Large captures: canvas fits the image, annotations stay crisp
+- [ ] Zoom: mouse wheel zooms at the cursor (1x–8x); the point under the
+      cursor stays put; toolbar −/+ and Ctrl++/Ctrl+− agree with the wheel
+- [ ] Pan: middle-button drag moves the image; it can't be dragged fully
+      off-screen; Fit (Ctrl+0) returns to fit-and-center
+- [ ] Zoomed drawing: annotations drawn while zoomed land where drawn and
+      export at full resolution unchanged
 
 ## Audit — Phases 0–4 vs. mac parity (2026-08-26)
 
