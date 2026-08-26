@@ -20,7 +20,7 @@ internal sealed class AnnotationCanvas : SKElement
     private const double FreehandMinStepPx = 2;
     private const double HandleSizePx = 8;
 
-    private enum DragMode { None, Drawing, Freehand, Moving, Resizing, ArrowStart, ArrowEnd }
+    private enum DragMode { None, Drawing, Freehand, Moving, Resizing, ArrowStart, ArrowEnd, CropDragging }
 
     private SKBitmap? _fullBitmap;
     private SKImage? _previewImage;
@@ -38,6 +38,61 @@ internal sealed class AnnotationCanvas : SKElement
     private NormalizedPoint _dragStart;
     private NormalizedPoint _lastNorm;
     private NormalizedRect _resizeOrigin;
+
+    // Crop mode: drag selects the region to keep; the committed rect is in
+    // original-image normalized space.
+    public bool IsCropping { get; private set; }
+
+    private NormalizedRect? _cropDraft;
+
+    /// Raised when the user finishes dragging a valid crop region.
+    public event Action<NormalizedRect>? CropCommitted;
+
+    public void EnterCropMode()
+    {
+        IsCropping = true;
+        _cropDraft = null;
+        Model.Select(null);
+        Cursor = Cursors.Cross;
+        InvalidateVisual();
+    }
+
+    public void CancelCrop()
+    {
+        if (!IsCropping)
+        {
+            return;
+        }
+
+        IsCropping = false;
+        _cropDraft = null;
+        Cursor = ActiveTool == AnnotationTool.Select ? Cursors.Arrow : Cursors.Cross;
+        InvalidateVisual();
+    }
+
+    /// Cuts the bitmap to the crop rect and remaps all annotations into the
+    /// cropped space, so existing edits keep their position relative to the
+    /// picture. Resets undo history (the pre-crop image no longer exists).
+    public void ApplyCrop(NormalizedRect rect)
+    {
+        if (_fullBitmap is null)
+        {
+            return;
+        }
+
+        int oldWidth = _fullBitmap.Width;
+        int oldHeight = _fullBitmap.Height;
+        var document = Model.ToDocument();
+
+        var cropped = global::Screenstop.Rendering.Crop.Apply(_fullBitmap, rect);
+        _fullBitmap.Dispose();
+        _fullBitmap = cropped;
+        Model.Load(global::Screenstop.Rendering.Crop.TransformDocument(document, rect, oldWidth, oldHeight));
+        _previewImage?.Dispose();
+        _previewImage = null;
+        _viewport.Reset();
+        InvalidateVisual();
+    }
 
     // Middle-button pan state (canvas pixels).
     private bool _panning;
@@ -166,6 +221,7 @@ internal sealed class AnnotationCanvas : SKElement
         }
 
         AnnotationRenderer.Draw(canvas, _previewImage, annotations, _previewWidth, _previewHeight);
+        DrawCropOverlay(canvas);
         DrawSelection(canvas);
     }
 
@@ -178,6 +234,14 @@ internal sealed class AnnotationCanvas : SKElement
         var norm = ToNorm(ToCanvasPx(e));
         _dragStart = norm;
         _lastNorm = norm;
+
+        if (IsCropping)
+        {
+            _cropDraft = null;
+            _mode = DragMode.CropDragging;
+            InvalidateVisual();
+            return;
+        }
 
         if (ActiveTool == AnnotationTool.Select)
         {
@@ -249,6 +313,10 @@ internal sealed class AnnotationCanvas : SKElement
 
         switch (_mode)
         {
+            case DragMode.CropDragging:
+                _cropDraft = CropTransform.Validate(NormalizedRect.FromPoints(_dragStart.X, _dragStart.Y, norm.X, norm.Y));
+                break;
+
             case DragMode.Drawing when _draft is not null:
                 if (_draft.Tool.UsesEndPoints())
                 {
@@ -314,6 +382,20 @@ internal sealed class AnnotationCanvas : SKElement
 
         switch (_mode)
         {
+            case DragMode.CropDragging:
+                _mode = DragMode.None;
+                IsCropping = false;
+                Cursor = ActiveTool == AnnotationTool.Select ? Cursors.Arrow : Cursors.Cross;
+                var finalRect = CropTransform.Validate(NormalizedRect.FromPoints(_dragStart.X, _dragStart.Y, norm.X, norm.Y));
+                _cropDraft = null;
+                if (finalRect is not null)
+                {
+                    CropCommitted?.Invoke(finalRect.Value);
+                }
+
+                InvalidateVisual();
+                break;
+
             case DragMode.Drawing when _draft is not null:
                 CommitDrawing(norm);
                 break;
@@ -585,6 +667,68 @@ internal sealed class AnnotationCanvas : SKElement
         if (fixX != 0 || fixY != 0)
         {
             annotation.Translate(fixX, fixY);
+        }
+    }
+
+    private void DrawCropOverlay(SKCanvas canvas)
+    {
+        if (!IsCropping)
+        {
+            return;
+        }
+
+        if (_viewport.DisplayWidth <= 0 || _viewport.DisplayHeight <= 0)
+        {
+            return;
+        }
+
+        double dispW = _viewport.DisplayWidth;
+        double dispH = _viewport.DisplayHeight;
+
+        var cropRect = _cropDraft ?? new NormalizedRect(0, 0, 1, 1);
+
+        var rect = new SKRect(
+            (float)(cropRect.X * dispW),
+            (float)(cropRect.Y * dispH),
+            (float)(cropRect.Right * dispW),
+            (float)(cropRect.Bottom * dispH));
+
+        // Dim everything outside the selection.
+        using var dimPaint = new SKPaint
+        {
+            Color = new SKColor(0, 0, 0, 140),
+        };
+        using var full = new SKPath { FillType = SKPathFillType.EvenOdd };
+        full.AddRect(new SKRect(0, 0, (float)dispW, (float)dispH));
+        full.AddRect(rect);
+        canvas.DrawPath(full, dimPaint);
+
+        // Bright border around the kept region + rule-of-thirds guides.
+        using var borderPaint = new SKPaint
+        {
+            Style = SKPaintStyle.Stroke,
+            Color = new SKColor(59, 130, 246),
+            StrokeWidth = 2f,
+            IsAntialias = true,
+        };
+        canvas.DrawRect(rect, borderPaint);
+
+        using var guidePaint = new SKPaint
+        {
+            Style = SKPaintStyle.Stroke,
+            Color = new SKColor(255, 255, 255, 70),
+            StrokeWidth = 1f,
+            IsAntialias = true,
+            PathEffect = SKPathEffect.CreateDash(new[] { 6f, 6f }, 0),
+        };
+        float thirdW = rect.Width / 3f;
+        float thirdH = rect.Height / 3f;
+        for (int i = 1; i <= 2; i++)
+        {
+            float x = rect.Left + (thirdW * i);
+            float y = rect.Top + (thirdH * i);
+            canvas.DrawLine(x, rect.Top, x, rect.Bottom, guidePaint);
+            canvas.DrawLine(rect.Left, y, rect.Right, y, guidePaint);
         }
     }
 

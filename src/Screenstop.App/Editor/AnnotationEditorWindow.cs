@@ -35,6 +35,14 @@ internal sealed class AnnotationEditorWindow : Window
     };
     private readonly Grid _canvasHost = new();
     private readonly Dictionary<AnnotationTool, ToggleButton> _toolToggles = new();
+    private readonly TextBlock _cropLabel = new()
+    {
+        Foreground = FindAppBrush("Sd.Text"),
+        FontSize = 12,
+        VerticalAlignment = VerticalAlignment.Center,
+    };
+    private readonly Border _cropConfirmBar;
+    private NormalizedRect? _pendingCrop;
     private readonly string _sourcePath;
     private NormalizedPoint _textAnchor;
     private bool _textSessionActive;
@@ -119,9 +127,40 @@ internal sealed class AnnotationEditorWindow : Window
             IsHitTestVisible = false,
         };
 
+        // Crop confirmation bar: appears after dragging a region.
+        var applyCropButton = MakeTextButton("Apply", "Cut the image to this region", (_, _) => ApplyPendingCrop());
+        var cancelCropButton = MakeTextButton("Cancel", "Discard this crop selection", (_, _) => DiscardPendingCrop());
+        var cropButtons = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(8, 0, 0, 0),
+        };
+        cropButtons.Children.Add(applyCropButton);
+        cropButtons.Children.Add(cancelCropButton);
+
+        var cropRow = new StackPanel { Orientation = Orientation.Horizontal };
+        cropRow.Children.Add(_cropLabel);
+        cropRow.Children.Add(cropButtons);
+
+        _cropConfirmBar = new Border
+        {
+            Background = new SolidColorBrush(Color.FromArgb(230, 17, 24, 39)),
+            BorderBrush = FindAppBrush("Sd.Border"),
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(8),
+            Padding = new Thickness(12, 6, 12, 6),
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Bottom,
+            Margin = new Thickness(0, 0, 0, 16),
+            Child = cropRow,
+            Visibility = Visibility.Collapsed,
+        };
+
         _canvasHost.Children.Add(_canvas);
         _canvasHost.Children.Add(_textOverlay);
         _canvasHost.Children.Add(hintChip);
+        _canvasHost.Children.Add(_cropConfirmBar);
 
         var root = new DockPanel();
         DockPanel.SetDock(toolbar, Dock.Top);
@@ -130,9 +169,59 @@ internal sealed class AnnotationEditorWindow : Window
         Content = root;
 
         _canvas.TextSessionRequested += OpenTextSession;
+        _canvas.CropCommitted += OnCropCommitted;
 
         KeyDown += OnWindowKeyDown;
         Closed += (_, _) => _canvas.ReleaseResources();
+    }
+
+    private void OnStartCrop(object sender, RoutedEventArgs e)
+    {
+        CommitTextSession();
+        _pendingCrop = null;
+        UpdateCropBar();
+        _canvas.EnterCropMode();
+        _hintLabel.Text = "Drag over the area to keep · Esc cancels";
+    }
+
+    private void OnCropCommitted(NormalizedRect rect)
+    {
+        _pendingCrop = rect;
+        double widthPx = Math.Round(rect.Width * (_canvas.FullBitmap?.Width ?? 0));
+        double heightPx = Math.Round(rect.Height * (_canvas.FullBitmap?.Height ?? 0));
+        _cropLabel.Text = $"Crop to {widthPx:0} × {heightPx:0} px?";
+        UpdateCropBar();
+    }
+
+    private void ApplyPendingCrop()
+    {
+        if (_pendingCrop is not { } rect)
+        {
+            return;
+        }
+
+        _canvas.ApplyCrop(rect);
+        _pendingCrop = null;
+        UpdateCropBar();
+        ActivateTool(_canvas.ActiveTool);
+    }
+
+    private void DiscardPendingCrop()
+    {
+        _pendingCrop = null;
+        _canvas.CancelCrop();
+        UpdateCropBar();
+        ActivateTool(_canvas.ActiveTool);
+    }
+
+    private void UpdateCropBar()
+    {
+        bool visible = _pendingCrop is not null || _canvas.IsCropping;
+        _cropConfirmBar.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
+        if (_pendingCrop is null && _canvas.IsCropping)
+        {
+            _cropLabel.Text = "Drag over the area to keep";
+        }
     }
 
     /// Builds the top chrome: tool strip | colors | history | zoom | commit.
@@ -155,6 +244,7 @@ internal sealed class AnnotationEditorWindow : Window
         var exportButton = MakeTextButton("Export…", "Export a flattened PNG copy", OnExport);
         var saveButton = MakeSaveButton();
         var closeButton = MakeIconButton(UiGlyph.Close, "Close", (_, _) => Close());
+        var cropButton = MakeTextButton("Crop", "Crop the image (drag a region, then Apply)", OnStartCrop);
 
         var zoomOutButton = MakeTextButton("−", "Zoom out (Ctrl+− or mouse wheel)", (_, _) => _canvas.ZoomOut());
         var zoomInButton = MakeTextButton("+", "Zoom in (Ctrl++ or mouse wheel)", (_, _) => _canvas.ZoomIn());
@@ -169,7 +259,7 @@ internal sealed class AnnotationEditorWindow : Window
             VerticalAlignment = VerticalAlignment.Center,
             HorizontalAlignment = HorizontalAlignment.Right,
         };
-        foreach (var element in new UIElement[] { Sep(), exportButton, saveButton, Sep(), zoomOutButton, _zoomLabel, zoomInButton, fitButton, Sep(), _undoButton, _redoButton, closeButton })
+        foreach (var element in new UIElement[] { Sep(), cropButton, exportButton, saveButton, Sep(), zoomOutButton, _zoomLabel, zoomInButton, fitButton, Sep(), _undoButton, _redoButton, closeButton })
         {
             rightCluster.Children.Add(element);
         }
@@ -494,7 +584,7 @@ internal sealed class AnnotationEditorWindow : Window
             _canvas.ResetZoom();
             e.Handled = true;
         }
-        else if (!ctrl && TryHandleToolShortcut(e.Key))
+        else if (!ctrl && !_canvas.IsCropping && TryHandleToolShortcut(e.Key))
         {
             e.Handled = true;
         }
@@ -510,7 +600,15 @@ internal sealed class AnnotationEditorWindow : Window
         }
         else if (e.Key == Key.Escape)
         {
-            _canvas.Model.Select(null);
+            if (_pendingCrop is not null || _canvas.IsCropping)
+            {
+                DiscardPendingCrop();
+            }
+            else
+            {
+                _canvas.Model.Select(null);
+            }
+
             e.Handled = true;
         }
     }
