@@ -11,6 +11,13 @@ internal struct RECT
     public int Bottom;
 }
 
+[StructLayout(LayoutKind.Sequential)]
+internal struct POINT
+{
+    public int X;
+    public int Y;
+}
+
 [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
 internal struct MONITORINFOEXW
 {
@@ -72,6 +79,9 @@ internal static class NativeMethods
 
     [DllImport("user32.dll")]
     internal static extern IntPtr MonitorFromWindow(IntPtr hwnd, uint dwFlags);
+
+    [DllImport("user32.dll")]
+    internal static extern IntPtr MonitorFromPoint(POINT pt, uint dwFlags);
 
     [DllImport("user32.dll")]
     internal static extern IntPtr GetForegroundWindow();

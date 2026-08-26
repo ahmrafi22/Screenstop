@@ -55,4 +55,30 @@ public static class MonitorEnumerator
 
         return monitors.FirstOrDefault(m => m.IsPrimary) ?? monitors[0];
     }
+
+    /// Returns the monitor whose bounds contain the point, or the monitor
+    /// with the largest overlap with the point's nearest monitor when the
+    /// point is off-screen. Null when no displays exist.
+    public static MonitorInfo? GetMonitorForPoint(int x, int y)
+    {
+        var monitors = Enumerate();
+        if (monitors.Count == 0)
+        {
+            return null;
+        }
+
+        foreach (var monitor in monitors)
+        {
+            if (monitor.PhysicalBounds.Contains(x, y))
+            {
+                return monitor;
+            }
+        }
+
+        var point = new POINT { X = x, Y = y };
+        var hMonitor = NativeMethods.MonitorFromPoint(point, NativeMethods.MONITOR_DEFAULTTONEAREST);
+        return monitors.FirstOrDefault(m => m.Handle == hMonitor)
+            ?? monitors.FirstOrDefault(m => m.IsPrimary)
+            ?? monitors[0];
+    }
 }
