@@ -345,17 +345,24 @@ public static class BackgroundRenderer
             }
 
             var color = settings.Border.Color;
-            canvas.DrawPath(
-                SkiaGeometry.PerCornerPath(geometry.CardRect, geometry.CardCornerRadii),
-                new SKPaint
-                {
-                    Color = new SKColor(
-                        (byte)(color.Red * 255),
-                        (byte)(color.Green * 255),
-                        (byte)(color.Blue * 255),
-                        (byte)(opacity * 255)),
-                    IsAntialias = true,
-                });
+            if (settings.Border.Style == BorderStyle.Glass)
+            {
+                DrawGlassBorder(canvas, settings.Border, geometry, opacity);
+            }
+            else
+            {
+                canvas.DrawPath(
+                    SkiaGeometry.PerCornerPath(geometry.CardRect, geometry.CardCornerRadii),
+                    new SKPaint
+                    {
+                        Color = new SKColor(
+                            (byte)(color.Red * 255),
+                            (byte)(color.Green * 255),
+                            (byte)(color.Blue * 255),
+                            (byte)(opacity * 255)),
+                        IsAntialias = true,
+                    });
+            }
         }
         else if (castsShadow)
         {
@@ -369,6 +376,77 @@ public static class BackgroundRenderer
                 settings.ShadowStyle);
         }
     }
+
+    /// Glassmorphism ring: a translucent fill graded bright→dim from top-left
+    /// to bottom-right, plus an inner bevel (highlight on the light-facing inner
+    /// edge, shadow on the opposite) to sell a thin pane of glass.
+    private static void DrawGlassBorder(
+        SKCanvas canvas, BorderSettings border, FrameGeometry geometry, double opacity)
+    {
+        var cardRect = geometry.CardRect;
+        var color = border.Color;
+
+        byte bright = (byte)(Math.Clamp(opacity * 1.2, 0, 1) * 255);
+        byte dim = (byte)(Math.Clamp(opacity * 0.72, 0, 1) * 255);
+        using (var ringPaint = new SKPaint
+        {
+            IsAntialias = true,
+            Shader = SKShader.CreateLinearGradient(
+                new SKPoint((float)cardRect.MinX, (float)cardRect.MinY),
+                new SKPoint((float)cardRect.MaxX, (float)cardRect.MaxY),
+                new[] { ToSKColor(color, bright), ToSKColor(color, dim) },
+                null,
+                SKShaderTileMode.Clamp),
+        })
+        {
+            canvas.DrawPath(SkiaGeometry.PerCornerPath(cardRect, geometry.CardCornerRadii), ringPaint);
+        }
+
+        // Inner bevel sits inside the ring (outside the image rect) so the image
+        // drawn afterwards never covers it.
+        double bevelOffset = geometry.BorderWidth * 0.35;
+        var bevelRect = geometry.ImageRect.Inset(-bevelOffset, -bevelOffset);
+        float bevelStroke = (float)Math.Max(1, geometry.BorderWidth * 0.35);
+        using var bevelPath = SkiaGeometry.PerCornerPath(bevelRect, geometry.ImageCornerRadii);
+
+        using (var highlight = new SKPaint
+        {
+            IsAntialias = true,
+            Style = SKPaintStyle.Stroke,
+            StrokeWidth = bevelStroke,
+            Shader = SKShader.CreateLinearGradient(
+                new SKPoint((float)bevelRect.MinX, (float)bevelRect.MinY),
+                new SKPoint((float)bevelRect.MaxX, (float)bevelRect.MaxY),
+                new[] { ToSKColor(RgbaColor.White, (byte)(0.35 * 255)), ToSKColor(RgbaColor.White, 0) },
+                null,
+                SKShaderTileMode.Clamp),
+        })
+        {
+            canvas.DrawPath(bevelPath, highlight);
+        }
+
+        using (var shadow = new SKPaint
+        {
+            IsAntialias = true,
+            Style = SKPaintStyle.Stroke,
+            StrokeWidth = bevelStroke,
+            Shader = SKShader.CreateLinearGradient(
+                new SKPoint((float)bevelRect.MinX, (float)bevelRect.MinY),
+                new SKPoint((float)bevelRect.MaxX, (float)bevelRect.MaxY),
+                new[] { new SKColor(26, 32, 48, 0), new SKColor(26, 32, 48, (byte)(0.16 * 255)) },
+                null,
+                SKShaderTileMode.Clamp),
+        })
+        {
+            canvas.DrawPath(bevelPath, shadow);
+        }
+    }
+
+    private static SKColor ToSKColor(RgbaColor color, byte alpha) => new(
+        (byte)(color.Red * 255),
+        (byte)(color.Green * 255),
+        (byte)(color.Blue * 255),
+        alpha);
 
     /// Paints the shadow without laying ink inside the card: the caster is
     /// clipped away so only the spill survives (mac drawShadow parity).
