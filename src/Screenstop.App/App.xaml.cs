@@ -1,3 +1,5 @@
+using System.Diagnostics;
+using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Threading;
@@ -17,8 +19,10 @@ namespace Screenstop.App;
 public partial class App : Application
 {
     private const string SingleInstanceMutexName = @"Local\Screenstop.SingleInstance";
+    private const string SingleInstanceEventName = @"Local\Screenstop.ShowSettings";
 
     private Mutex? _mutex;
+    private EventWaitHandle? _showSettingsSignal;
     private TrayController? _tray;
     private HotkeyService? _hotkeys;
     private CaptureCoordinator? _coordinator;
@@ -42,17 +46,42 @@ public partial class App : Application
         _mutex = new Mutex(initiallyOwned: true, SingleInstanceMutexName, out var createdNew);
         if (!createdNew)
         {
+            // Mac parity: relaunching surfaces Settings when the tray icon is
+            // hidden (the only way back into the app in that state).
+            try
+            {
+                if (EventWaitHandle.TryOpenExisting(SingleInstanceEventName, out var signal))
+                {
+                    signal.Set();
+                    signal.Dispose();
+                }
+            }
+            catch (Exception)
+            {
+            }
+
             Shutdown(0);
             return;
         }
 
+        _showSettingsSignal = new EventWaitHandle(false, EventResetMode.AutoReset, SingleInstanceEventName);
+        _ = Task.Run(WaitForShowSettingsSignal);
+
         base.OnStartup(e);
 
+        var initialSettings = SettingsStore.Load();
+
         _tray = new TrayController();
-        _tray.Initialize(OpenSettings);
+        _tray.Initialize(new TrayController.TrayActions(
+            OpenSettings: OpenSettings,
+            CaptureFullscreen: () => _coordinator?.HandleHotkey(null, CaptureMode.Fullscreen),
+            CaptureWindow: () => _coordinator?.HandleHotkey(null, CaptureMode.Window),
+            CaptureArea: () => _coordinator?.HandleHotkey(null, CaptureMode.Area),
+            OpenScreenshotsFolder: OpenScreenshotsFolder));
+        _tray.SetVisible(initialSettings.ShowTrayIcon);
 
         _preview = new PreviewPanelPresenter(_tray.Notify);
-        _coordinator = new CaptureCoordinator(_tray.Notify, _preview.OnCapture);
+        _coordinator = new CaptureCoordinator(_tray.Notify, OnCaptureCompleted);
         _hotkeys = HotkeyService.Start(out var conflicts);
         _hotkeys.HotkeyPressed += _coordinator.HandleHotkey;
 
@@ -60,6 +89,48 @@ public partial class App : Application
         {
             string combos = string.Join(", ", conflicts.Select(HotkeyService.Describe));
             _tray.Notify("Hotkey conflict", $"{combos} could not be registered and are ignored.");
+        }
+    }
+
+    private void OnCaptureCompleted(AfterCaptureResult result, string captureType)
+    {
+        _preview?.OnCapture(result, captureType);
+
+        var settings = SettingsStore.Load();
+        if (settings.AfterCaptureAnnotate)
+        {
+            _preview?.OpenEditor(result);
+        }
+    }
+
+    private static void OpenScreenshotsFolder()
+    {
+        try
+        {
+            var settings = SettingsStore.Load();
+            string directory = string.IsNullOrWhiteSpace(settings.ExportDirectoryPath)
+                ? SettingsStore.DefaultExportDirectoryPath
+                : settings.ExportDirectoryPath;
+            Directory.CreateDirectory(directory);
+            Process.Start(new ProcessStartInfo("explorer.exe", $"\"{directory}\"") { UseShellExecute = true });
+        }
+        catch (Exception ex)
+        {
+            TraceLog.Write($"could not open screenshots folder: {ex.Message}");
+        }
+    }
+
+    private void WaitForShowSettingsSignal()
+    {
+        while (_showSettingsSignal is not null && _showSettingsSignal.WaitOne())
+        {
+            Dispatcher.BeginInvoke(() =>
+            {
+                if (!SettingsStore.Load().ShowTrayIcon)
+                {
+                    OpenSettings();
+                }
+            });
         }
     }
 
@@ -83,6 +154,17 @@ public partial class App : Application
 
         _tray?.Dispose();
         _tray = null;
+
+        var signal = _showSettingsSignal;
+        _showSettingsSignal = null;
+        try
+        {
+            signal?.Set();
+            signal?.Dispose();
+        }
+        catch (ObjectDisposedException)
+        {
+        }
 
         try
         {
@@ -129,6 +211,7 @@ public partial class App : Application
         TraceLog.Write("settings saved from settings window");
 
         LaunchAtLogin.SetEnabled(settings.LaunchAtLogin);
+        _tray?.SetVisible(settings.ShowTrayIcon);
 
         if (_hotkeys is not null)
         {
