@@ -33,22 +33,41 @@ public static class AnnotationRenderer
         return 0.25 + (clamped * 3.75); // 23% ≈ 1.11×, 100% = 4×
     }
 
-    /// Renders the source image with all annotations at full resolution.
+    /// Renders the source image with all annotations at full resolution, then
+    /// composites the result onto the mockup background stage when one is set.
     public static SKBitmap Render(SKBitmap source, AnnotationDocument document)
     {
+        SKBitmap annotated;
         if (document.Annotations.Count == 0)
         {
-            return source.Copy();
+            annotated = source.Copy();
         }
-
-        var result = source.Copy();
-        using (var canvas = new SKCanvas(result))
-        using (var image = SKImage.FromBitmap(source))
+        else
         {
-            Draw(canvas, image, document.Annotations, source.Width, source.Height);
+            annotated = source.Copy();
+            using (var canvas = new SKCanvas(annotated))
+            using (var image = SKImage.FromBitmap(source))
+            {
+                Draw(canvas, image, document.Annotations, source.Width, source.Height);
+            }
         }
 
-        return result;
+        return ApplyBackground(annotated, document.Background);
+    }
+
+    /// Composites an already-rendered bitmap onto the background stage.
+    /// Returns the input unchanged (not a copy) when there is nothing to add.
+    public static SKBitmap ApplyBackground(SKBitmap rendered, Core.Background.BackgroundSettings? background)
+    {
+        if (background is null || !background.HasRenderableContent)
+        {
+            return rendered;
+        }
+
+        using (rendered)
+        {
+            return BackgroundRenderer.Compose(rendered, background);
+        }
     }
 
     /// Draws annotations onto a canvas. Coordinates are derived from the

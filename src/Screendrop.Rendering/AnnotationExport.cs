@@ -17,9 +17,18 @@ public static class AnnotationExport
         return document is not null && document.Annotations.Count > 0;
     }
 
-    /// Decodes the image and composites its sidecar annotations (if any).
-    /// Returns the plain decode when there is nothing to apply. Returns null
-    /// only if the image itself cannot be decoded.
+    /// True when a sidecar has any renderable edit (annotations or background).
+    public static bool HasContent(string imagePath) =>
+        HasContent(AnnotationDocument.Load(imagePath));
+
+    private static bool HasContent(AnnotationDocument? document) =>
+        document is not null
+        && (document.Annotations.Count > 0
+            || (document.Background?.HasRenderableContent ?? false));
+
+    /// Decodes the image and composites its sidecar edits (annotations and/or
+    /// background). Returns the plain decode when there is nothing to apply.
+    /// Returns null only if the image itself cannot be decoded.
     public static SKBitmap? LoadComposited(string imagePath)
     {
         var bitmap = SKBitmap.Decode(imagePath);
@@ -29,14 +38,14 @@ public static class AnnotationExport
         }
 
         var document = AnnotationDocument.Load(imagePath);
-        if (document is null || document.Annotations.Count == 0)
+        if (!HasContent(document))
         {
             return bitmap;
         }
 
         using (bitmap)
         {
-            return AnnotationRenderer.Render(bitmap, document);
+            return AnnotationRenderer.Render(bitmap, document!);
         }
     }
 
@@ -46,11 +55,11 @@ public static class AnnotationExport
     public static SKBitmap Composite(SKBitmap bitmap, string imagePath)
     {
         var document = AnnotationDocument.Load(imagePath);
-        if (document is null || document.Annotations.Count == 0)
+        if (!HasContent(document))
         {
             return bitmap.Copy();
         }
 
-        return AnnotationRenderer.Render(bitmap, document);
+        return AnnotationRenderer.Render(bitmap, document!);
     }
 }
