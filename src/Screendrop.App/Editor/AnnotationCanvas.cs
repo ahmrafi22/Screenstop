@@ -441,7 +441,14 @@ internal sealed class AnnotationCanvas : SKElement
         canvas.Save();
         canvas.ClipPath(SkiaGeometry.PerCornerPath(imageFrame, frameGeometry.ImageCornerRadii), antialias: true);
         canvas.Translate((float)imageFrame.X, (float)imageFrame.Y);
-        canvas.DrawImage(_previewImage, 0, 0);
+
+        // High-quality sampling so the camera projection stays smooth when it
+        // magnifies the card beyond the preview texture resolution.
+        using var imagePaint = new SKPaint { FilterQuality = SKFilterQuality.High };
+        canvas.DrawImage(
+            _previewImage,
+            SKRect.Create(0, 0, (float)imageFrame.Width, (float)imageFrame.Height),
+            imagePaint);
 
         var annotations = new List<Annotation>(Model.Annotations);
         if (_draft is not null)
