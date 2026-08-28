@@ -463,14 +463,30 @@ internal sealed class BackgroundInspector : UserControl
 
         section.Children.Add(presetRow);
         section.Children.Add(reset);
-        section.Children.Add(Slider("Tilt", () => _settings.Camera.TiltXDegrees, v => _settings.Camera.TiltXDegrees = v, -45, 45, FormatDegrees));
-        section.Children.Add(Slider("Turn", () => _settings.Camera.RotationYDegrees, v => _settings.Camera.RotationYDegrees = v, -45, 45, FormatDegrees));
-        section.Children.Add(Slider("Roll", () => _settings.Camera.RollDegrees, v => _settings.Camera.RollDegrees = v, -30, 30, FormatDegrees));
-        section.Children.Add(Slider("Field of view", () => _settings.Camera.FieldOfViewDegrees, v => _settings.Camera.FieldOfViewDegrees = v, 8, 60, FormatDegrees));
-        section.Children.Add(Slider("Zoom", () => _settings.Camera.Zoom, v => _settings.Camera.Zoom = v, 0.5, 2, v => $"{v:0.00}×"));
+
+        // Mirrors the mac camera inspector: upgrade any legacy (v1) projection
+        // before applying a change so the sliders always drive the current model.
+        UIElement CamSlider(string label, Func<double> get, Action<double> set, double min, double max, Func<double, string> fmt)
+            => Slider(label, get, v => { _settings.Camera.UpgradeProjectionIfNeeded(); set(v); }, min, max, fmt);
+
+        section.Children.Add(GroupLabel("Camera angle"));
+        section.Children.Add(CamSlider("Tilt X", () => _settings.Camera.TiltXDegrees, v => _settings.Camera.TiltXDegrees = v, -45, 45, FormatDegrees));
+        section.Children.Add(CamSlider("Tilt Y", () => _settings.Camera.TiltYDegrees, v => _settings.Camera.TiltYDegrees = v, -45, 45, FormatDegrees));
+        section.Children.Add(CamSlider("Roll", () => _settings.Camera.RollDegrees, v => _settings.Camera.RollDegrees = v, -45, 45, FormatDegrees));
+
+        section.Children.Add(GroupLabel("Framing"));
+        section.Children.Add(CamSlider("Field of view", () => _settings.Camera.FieldOfViewDegrees, v => _settings.Camera.FieldOfViewDegrees = v, 18, 80, FormatDegrees));
+        section.Children.Add(CamSlider("Zoom", () => _settings.Camera.Zoom, v => _settings.Camera.Zoom = v, 0.4, 2.5, v => $"{v:0.00}×"));
+        section.Children.Add(CamSlider("Pan X", () => _settings.Camera.PanX, v => _settings.Camera.PanX = v, -0.5, 0.5, v => $"{v * 100:+0;-0;0}%"));
+        section.Children.Add(CamSlider("Pan Y", () => _settings.Camera.PanY, v => _settings.Camera.PanY = v, -0.5, 0.5, v => $"{v * 100:+0;-0;0}%"));
+
+        section.Children.Add(GroupLabel("Card rotation"));
+        section.Children.Add(CamSlider("Rotate X", () => _settings.Camera.RotationXDegrees, v => _settings.Camera.RotationXDegrees = v, -60, 60, FormatDegrees));
+        section.Children.Add(CamSlider("Rotate Y", () => _settings.Camera.RotationYDegrees, v => _settings.Camera.RotationYDegrees = v, -60, 60, FormatDegrees));
+
         section.Children.Add(new TextBlock
         {
-            Text = "Camera perspective is applied when you save or export.",
+            Text = "Camera perspective previews live and is included when you save or export.",
             FontSize = 11,
             Foreground = Brush("Sd.TextMuted"),
             TextWrapping = TextWrapping.Wrap,
@@ -691,6 +707,16 @@ internal sealed class BackgroundInspector : UserControl
         });
         return section;
     }
+
+    /// Small sub-heading inside a section (mac InspectorGroupLabel parity).
+    private static TextBlock GroupLabel(string text) => new()
+    {
+        Text = text,
+        FontSize = 11,
+        FontWeight = FontWeights.Medium,
+        Foreground = Brush("Sd.TextMuted"),
+        Margin = new Thickness(0, 8, 0, 2),
+    };
 
     private UIElement Slider(
         string label,
