@@ -808,34 +808,67 @@ internal sealed class BackgroundInspector : UserControl
         double max,
         Func<double, string> format)
     {
+        // mac parity: label + track share one pill, value sits in a second pill.
         var row = new Grid { Margin = new Thickness(0, 3, 0, 3) };
-        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(86) });
         row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(46) });
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+        var pill = new Border
+        {
+            Background = (Brush)Application.Current.Resources["Sd.Panel"],
+            BorderBrush = (Brush)Application.Current.Resources["Sd.Border"],
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(15),
+            Height = 30,
+            Padding = new Thickness(12, 0, 10, 0),
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        var pillGrid = new Grid { VerticalAlignment = VerticalAlignment.Center };
+        pillGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        pillGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
 
         var name = new TextBlock
         {
             Text = label,
             FontSize = 12,
+            FontWeight = FontWeights.SemiBold,
+            Foreground = new SolidColorBrush(Color.FromRgb(0x33, 0x33, 0x33)),
             VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(0, 0, 12, 0),
         };
         var slider = new Slider
         {
-            Style = (Style)Application.Current.Resources["Sd.Slider"],
+            Style = (Style)Application.Current.Resources["Sd.PillSlider"],
             Minimum = min,
             Maximum = max,
             Value = Math.Clamp(get(), min, max),
             SmallChange = (max - min) / 100,
             LargeChange = (max - min) / 10,
             VerticalAlignment = VerticalAlignment.Center,
+            IsMoveToPointEnabled = true,
+        };
+
+        var valuePill = new Border
+        {
+            Background = (Brush)Application.Current.Resources["Sd.Panel"],
+            BorderBrush = (Brush)Application.Current.Resources["Sd.Border"],
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(15),
+            Height = 30,
+            MinWidth = 48,
+            Margin = new Thickness(6, 0, 0, 0),
+            Padding = new Thickness(8, 0, 8, 0),
+            VerticalAlignment = VerticalAlignment.Center,
         };
         var value = new TextBlock
         {
             Text = format(slider.Value),
-            FontSize = 11,
-            Foreground = Brush("Sd.TextMuted"),
+            FontSize = 12,
+            FontWeight = FontWeights.SemiBold,
+            Foreground = new SolidColorBrush(Color.FromRgb(0x33, 0x33, 0x33)),
             VerticalAlignment = VerticalAlignment.Center,
-            TextAlignment = TextAlignment.Right,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            TextAlignment = TextAlignment.Center,
         };
 
         slider.ValueChanged += (_, _) =>
@@ -852,10 +885,16 @@ internal sealed class BackgroundInspector : UserControl
 
         Grid.SetColumn(name, 0);
         Grid.SetColumn(slider, 1);
-        Grid.SetColumn(value, 2);
-        row.Children.Add(name);
-        row.Children.Add(slider);
-        row.Children.Add(value);
+        pillGrid.Children.Add(name);
+        pillGrid.Children.Add(slider);
+        pill.Child = pillGrid;
+
+        valuePill.Child = value;
+
+        Grid.SetColumn(pill, 0);
+        Grid.SetColumn(valuePill, 1);
+        row.Children.Add(pill);
+        row.Children.Add(valuePill);
         return row;
     }
 
