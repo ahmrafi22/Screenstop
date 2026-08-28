@@ -13,6 +13,13 @@ public static class DisplayAffinity
         return SetWindowDisplayAffinity(hwnd, WdaExcludedFromCapture);
     }
 
+    /// Reverses ExcludeFromCapture so the window appears in captures again
+    /// (mac includeAppWindowsInCaptures toggle).
+    public static bool IncludeInCapture(IntPtr hwnd)
+    {
+        return SetWindowDisplayAffinity(hwnd, WdaNone);
+    }
+
     public static uint GetAffinity(IntPtr hwnd)
     {
         return GetWindowDisplayAffinity(hwnd, out uint affinity) ? affinity : WdaNone;

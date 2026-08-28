@@ -7,6 +7,7 @@ using Screendrop.App.Infrastructure;
 using Screendrop.App.WindowPicker;
 using Screendrop.Capture;
 using Screendrop.Core.Geometry;
+using Screendrop.Core.Settings;
 using SkiaSharp;
 
 namespace Screendrop.App.Capture;
@@ -23,6 +24,25 @@ internal sealed class CaptureCoordinator
     {
         _notify = notify;
         _onCapture = onCapture;
+    }
+
+    /// Runs the self-timer countdown on the UI thread (mac captureDelaySeconds
+    /// parity). Returns immediately when the delay is off.
+    private Task RunCountdownAsync()
+    {
+        int delay = SettingsStore.Load().CaptureDelaySeconds;
+        if (delay <= 0)
+        {
+            return Task.CompletedTask;
+        }
+
+        var dispatcher = Application.Current?.Dispatcher;
+        if (dispatcher is null)
+        {
+            return Task.CompletedTask;
+        }
+
+        return dispatcher.Invoke(() => CountdownOverlay.RunAsync(delay));
     }
 
     public void HandleHotkey(object? sender, CaptureMode mode)
@@ -68,10 +88,12 @@ internal sealed class CaptureCoordinator
 
         var dispatcher = Application.Current.Dispatcher;
 
-        Task.Run(() =>
+        Task.Run(async () =>
         {
             try
             {
+                await RunCountdownAsync();
+
                 WindowInfo? picked = null;
                 dispatcher.Invoke(() => { picked = WindowPickerController.Pick(monitors); });
                 if (picked is null)
@@ -119,10 +141,12 @@ internal sealed class CaptureCoordinator
 
         var dispatcher = Application.Current.Dispatcher;
 
-        Task.Run(() =>
+        Task.Run(async () =>
         {
             try
             {
+                await RunCountdownAsync();
+
                 TraceLog.Write("area: capturing full monitor on background");
                 using var full = GDICapturer.CaptureMonitor(monitor);
                 TraceLog.Write("area: full capture done, invoking dispatcher");
@@ -186,7 +210,7 @@ internal sealed class CaptureCoordinator
             return;
         }
 
-        Task.Run(() =>
+        Task.Run(async () =>
         {
             try
             {
@@ -197,6 +221,8 @@ internal sealed class CaptureCoordinator
                     Infrastructure.TraceLog.Write("capture aborted: no monitor");
                     return;
                 }
+
+                await RunCountdownAsync();
 
                 using var capture = GDICapturer.CaptureMonitor(monitor);
                 var result = AfterCapturePipeline.Run(capture.Bitmap, "fullscreen", monitor.PhysicalBounds.X, monitor.PhysicalBounds.Y);

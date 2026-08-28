@@ -18,13 +18,21 @@ internal sealed class TrayController : IDisposable
 
     private TaskbarIcon? _icon;
 
-    public void Initialize(Action? openSettings = null)
+    /// Tray menu callbacks (mac MenuBarView parity, minus recording/cloud).
+    public sealed record TrayActions(
+        Action? OpenSettings,
+        Action? CaptureFullscreen,
+        Action? CaptureWindow,
+        Action? CaptureArea,
+        Action? OpenScreenshotsFolder);
+
+    public void Initialize(TrayActions actions)
     {
         var icon = new TaskbarIcon
         {
             ToolTipText = "Screendrop",
             IconSource = BitmapFrame.Create(new Uri(IconUri, UriKind.Absolute)),
-            ContextMenu = BuildMenu(openSettings),
+            ContextMenu = BuildMenu(actions),
             Visibility = Visibility.Visible,
         };
 
@@ -33,23 +41,59 @@ internal sealed class TrayController : IDisposable
         _icon = icon;
     }
 
-    private static ContextMenu BuildMenu(Action? openSettings)
+    /// Shows or hides the tray icon (mac showMenuBarIcon parity). Hotkeys keep
+    /// working while hidden; relaunching Screendrop reopens Settings.
+    public void SetVisible(bool visible)
+    {
+        if (_icon is null)
+        {
+            return;
+        }
+
+        if (visible && !_icon.IsCreated)
+        {
+            _icon.ForceCreate();
+        }
+
+        _icon.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private static ContextMenu BuildMenu(TrayActions actions)
     {
         var menu = new ContextMenu();
 
-        if (openSettings is not null)
+        AddItem(menu, "Capture Fullscreen", actions.CaptureFullscreen);
+        AddItem(menu, "Capture Window", actions.CaptureWindow);
+        AddItem(menu, "Capture Area", actions.CaptureArea);
+        menu.Items.Add(new Separator());
+        AddItem(menu, "Open Screenshots Folder", actions.OpenScreenshotsFolder);
+
+        if (actions.OpenSettings is not null)
         {
             var settings = new MenuItem { Header = "Settings…" };
-            settings.Click += (_, _) => openSettings();
+            settings.Click += (_, _) => actions.OpenSettings();
             menu.Items.Add(settings);
-            menu.Items.Add(new Separator());
         }
+
+        menu.Items.Add(new Separator());
 
         var quit = new MenuItem { Header = "Quit Screendrop" };
         quit.Click += (_, _) => Application.Current.Shutdown();
         menu.Items.Add(quit);
 
         return menu;
+    }
+
+    private static void AddItem(ContextMenu menu, string header, Action? action)
+    {
+        if (action is null)
+        {
+            return;
+        }
+
+        var item = new MenuItem { Header = header };
+        item.Click += (_, _) => action();
+        menu.Items.Add(item);
     }
 
     public void Notify(string title, string message, string? thumbnailPath = null)

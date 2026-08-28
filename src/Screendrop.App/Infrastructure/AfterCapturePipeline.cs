@@ -16,6 +16,11 @@ internal static class AfterCapturePipeline
         var time = timestamp ?? DateTimeOffset.Now;
         var settings = SettingsStore.Load();
 
+        if (settings.PlaySounds)
+        {
+            ShutterSound.Play();
+        }
+
         byte[] pngBytes = JpegCompressor.EncodePng(bitmap);
 
         string stagingName = FileNaming.BuildFileName(ScreendropSettings.DefaultFileNamePattern, time, captureType, "png");
@@ -32,11 +37,12 @@ internal static class AfterCapturePipeline
             string directory = ResolveExportDirectory(settings);
             Directory.CreateDirectory(directory);
 
-            string extension = settings.AutoCompress ? "jpg" : "png";
+            bool useJpeg = settings.ExportFormat == ExportFormat.Jpeg;
+            string extension = useJpeg ? "jpg" : "png";
             string fileName = FileNaming.BuildFileName(settings.FileNamePattern, time, captureType, extension);
             savedPath = FileNaming.ResolveUnique(directory, fileName);
 
-            if (settings.AutoCompress)
+            if (useJpeg)
             {
                 byte[] jpeg = JpegCompressor.Encode(bitmap, settings.CompressionQuality);
                 File.WriteAllBytes(savedPath, jpeg);
