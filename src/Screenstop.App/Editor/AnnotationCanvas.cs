@@ -25,8 +25,14 @@ internal sealed class AnnotationCanvas : SKElement
 
     private SKBitmap? _fullBitmap;
     private SKImage? _previewImage;
+    private SKBitmap? _previewBitmap;
     private int _previewWidth;
     private int _previewHeight;
+
+    // Cached live progressive-blur preview (clipped mode). Recomputed only when
+    // the blur settings or the preview size change, not on every annotation edit.
+    private SKImage? _blurredPreview;
+    private int _blurredPreviewKey;
 
     // Zoom/pan mapping (pure math lives in Core's ZoomPanTransform):
     // canvas px = Offset + normalized * DisplaySize.
@@ -134,6 +140,11 @@ internal sealed class AnnotationCanvas : SKElement
         Model.Load(global::Screenstop.Rendering.Crop.TransformDocument(document, rect, oldWidth, oldHeight));
         _previewImage?.Dispose();
         _previewImage = null;
+        _previewBitmap?.Dispose();
+        _previewBitmap = null;
+        _blurredPreview?.Dispose();
+        _blurredPreview = null;
+        _blurredPreviewKey = 0;
         _layoutFull = null;
         _viewport.Reset();
         InvalidateVisual();
@@ -215,6 +226,11 @@ internal sealed class AnnotationCanvas : SKElement
             _fullBitmap = bitmap;
             _previewImage?.Dispose();
             _previewImage = null;
+            _previewBitmap?.Dispose();
+            _previewBitmap = null;
+            _blurredPreview?.Dispose();
+            _blurredPreview = null;
+            _blurredPreviewKey = 0;
             _layoutFull = null;
             _viewport.Reset();
             InvalidateVisual();
@@ -432,6 +448,13 @@ internal sealed class AnnotationCanvas : SKElement
         var frameGeometry = new FrameGeometry(imageFrame, cardFrame, bg);
         bool castsShadow = bg.IsEnabled || cameraLive;
 
+        bool liveBlur = bg.ProgressiveBlur.IsActive
+            && bg.ProgressiveBlur.EdgeMode == ProgressiveBlurEdgeMode.Clipped
+            && !IsCropping;
+        var baseImage = liveBlur
+            ? EnsureBlurredPreview(bg.ProgressiveBlur) ?? _previewImage
+            : _previewImage;
+
         var matrix = BackgroundRenderer.ToSKMatrix(projection.Forward);
         canvas.Save();
         canvas.Concat(ref matrix);
@@ -446,7 +469,7 @@ internal sealed class AnnotationCanvas : SKElement
         // magnifies the card beyond the preview texture resolution.
         using var imagePaint = new SKPaint { FilterQuality = SKFilterQuality.High };
         canvas.DrawImage(
-            _previewImage,
+            baseImage,
             SKRect.Create(0, 0, (float)imageFrame.Width, (float)imageFrame.Height),
             imagePaint);
 
@@ -1080,6 +1103,8 @@ internal sealed class AnnotationCanvas : SKElement
         {
             _previewImage?.Dispose();
             _previewImage = SKImage.FromBitmap(_fullBitmap);
+            _previewBitmap?.Dispose();
+            _previewBitmap = _fullBitmap.Copy();
             _previewWidth = _fullBitmap.Width;
             _previewHeight = _fullBitmap.Height;
             return;
@@ -1094,9 +1119,33 @@ internal sealed class AnnotationCanvas : SKElement
 
         _previewImage?.Dispose();
         _previewImage = SKImage.FromBitmap(resized);
-        resized.Dispose();
+        _previewBitmap?.Dispose();
+        _previewBitmap = resized;
         _previewWidth = targetW;
         _previewHeight = targetH;
+    }
+
+    /// Builds (or reuses) a blurred copy of the preview for the live
+    /// progressive-blur preview. Annotations stay sharp on top; the blur conveys
+    /// the focus effect without re-rendering on every annotation edit.
+    private SKImage? EnsureBlurredPreview(ProgressiveBlurSettings settings)
+    {
+        if (_previewBitmap is null)
+        {
+            return null;
+        }
+
+        int key = HashCode.Combine(settings.GetHashCode(), _previewWidth, _previewHeight);
+        if (_blurredPreview is not null && _blurredPreviewKey == key)
+        {
+            return _blurredPreview;
+        }
+
+        using var blurred = ProgressiveBlurRenderer.Apply(_previewBitmap, settings);
+        _blurredPreview?.Dispose();
+        _blurredPreview = SKImage.FromBitmap(blurred);
+        _blurredPreviewKey = key;
+        return _blurredPreview;
     }
 
     private Point ToCanvasPx(MouseEventArgs e)
@@ -1177,6 +1226,10 @@ internal sealed class AnnotationCanvas : SKElement
         Model.Changed -= InvalidateVisual;
         _previewImage?.Dispose();
         _previewImage = null;
+        _previewBitmap?.Dispose();
+        _previewBitmap = null;
+        _blurredPreview?.Dispose();
+        _blurredPreview = null;
         _fullBitmap?.Dispose();
         _fullBitmap = null;
     }
