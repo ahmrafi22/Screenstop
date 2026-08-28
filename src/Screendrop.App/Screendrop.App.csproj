@@ -8,8 +8,8 @@
     <AssemblyName>Screendrop</AssemblyName>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>Assets\screendrop.ico</ApplicationIcon>
-    <Version>1.0.0</Version>
-    <FileVersion>1.0.0.0</FileVersion>
+    <Version>1.1.0</Version>
+    <FileVersion>1.1.0.0</FileVersion>
     <Product>Screendrop</Product>
     <Company>Screendrop</Company>
     <Description>Screenshot and annotation for Windows</Description>

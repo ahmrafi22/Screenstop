@@ -33,6 +33,10 @@ large recording/teleprompter/cloud suite (~44k lines total); that suite is **out
 | Auto-save / auto-copy / auto-compress prefs | In scope |
 | Screenshot history store + naming pattern | In scope |
 | Settings window | In scope |
+| Background mockups (solid/gradient/wallpaper fill, padding, corners, shadow, border) | In scope — `BackgroundRenderer` (SkiaSharp) + Core models |
+| 3D camera transform + progressive (focus) blur + watermark | In scope — applied at export; flat live preview in editor |
+| Background presets + wallpaper packs (Frosted Lake, Serene Skies, …) | In scope — `BackgroundPresetStore` + `WallpaperStore` (downloadable packs) |
+| iOS-style floating preview overlay (card stack, hover actions, drag-out) | In scope — `PreviewPanelWindow`/`PreviewPanelPresenter` |
 | Launch at login | In scope — registry `Run` key |
 | Recording Studio (timeline, pointer/keystroke capture, export) | Deferred — own future project |
 | Camera overlay recording | Deferred |
@@ -158,6 +162,32 @@ with only the .NET SDK. Same APIs, fewer moving parts.
    wallpaper, ~55–90% pixel drift between captures), so the region-crop integration test
    probes screen stability first and skips strict pixel comparison when unstable; strict
    comparison runs on a stable/unlocked desktop.
+
+**Decision log (2026-08-28, Phase 8 — iOS visual parity + background mockups):**
+1. *Reference source.* The attached "Screendrop IOS" folder is the macOS SwiftUI/AppKit app
+   (not an iOS codebase). All visuals, presets, and settings are ported from its Swift source;
+   the attached screenshots are reference imagery only.
+2. *Background mockup pipeline.* Annotations render into the screenshot first, then
+   `BackgroundRenderer.Compose` composites the annotated image onto the stage (fill, padding,
+   corners, shadow, border, camera projection, progressive blur, watermark). All settings are
+   normalized (fractions of the image), so the same `BackgroundSettings` drives display-scale
+   previews and full-res exports.
+3. *Live editor preview is flat by design.* The canvas previews fill, corners, shadow, and
+   border live (`DrawLiveBackdrop`) but keeps the screenshot unprojected so annotations stay
+   aligned while editing. Camera perspective, scene blur, and watermark are applied on
+   save/export. This is a deliberate WYSIWYG-vs-interaction trade, not a missing feature.
+4. *Progressive blur approximation.* Skia has no masked variable blur; the renderer cross-fades
+   a blurred copy over the sharp source using a mask from `ProgressiveBlurGeometry`.
+5. *Wallpaper packs are downloaded on demand.* "Frosted Lake"/"Serene Skies" live in the remote
+   packs (`uihssn`, `fayaz`); the editor's "Get Wallpapers" installs them into
+   `%APPDATA%\Screendrop\Wallpapers`. Decoded wallpapers are cached (path + write-time keyed) so
+   live slider drags don't re-decode.
+6. *Settings window rebuilt iOS-style.* Sidebar + grouped inset panes with toggle switches,
+   exposing every ported setting (format, after-capture actions, self-timer, preview
+   position/auto-close/drag-close, tray icon, capture exclusion, card-action layout).
+7. *Preview overlay rebuilt iOS-style.* Vertical card stack (165×124 DIP cards, 16px corners),
+   blurred-thumbnail hover overlay, corner icon buttons, center action pills, slide-in animation,
+   drag-out via file `DragDrop`, acrylic backdrop via `SetWindowCompositionAttribute`.
 
 ### Why not the alternatives (decided)
 - **WinUI 3**: immature story for borderless overlay windows and tray apps.
@@ -434,6 +464,29 @@ Live status board. Update as phases complete; keep §5 acceptance text authorita
 - [ ] Clean install/uninstall/reinstall QA — needs an unlocked desktop
       (silent-install test was blocked in this session); checklist in docs/QA.md.
 
+### Phase 8 — iOS visual parity + background mockups ✅ (2026-08-28; manual QA open)
+- [x] Core background models: `BackgroundSettings`, `BackgroundStyle` (solid/gradient/wallpaper),
+      `BackgroundColor` (16 fills), `BackgroundGradient` (16 three-stop gradients), `ShadowStyle`
+      (Soft/Long/Glow/Crisp), `BorderSettings` + `SwatchLibrary`, `CameraSettings` (v2 projection),
+      `ProgressiveBlurSettings`, `WatermarkSettings`, `BackgroundLayout`, `FrameGeometry`,
+      `CameraGeometry`/`Homography`, `ProgressiveBlurGeometry`.
+- [x] Preset + wallpaper stores: `BackgroundPresetStore` (JSON library, duplicate-name guard),
+      `WallpaperStore` (downloadable packs `uihssn`/`fayaz`, recents index), `OverlayCardLayoutStore`.
+- [x] Rendering: `BackgroundRenderer.Compose` (fill/padding/corners/shadow/border/camera/blur/watermark),
+      `ProgressiveBlurRenderer` (mask-based approximation), `SkiaGeometry` (per-corner paths),
+      wallpaper decode cache, `DrawLiveBackdrop`/`ClipLiveImage` for the editor.
+- [x] Annotation sidecar carries `BackgroundSettings`; editor Save/Export compose it.
+- [x] Editor `BackgroundInspector` tab: presets, style pickers (color/gradient/wallpaper),
+      layout/shadow/camera/focus-blur/border/watermark controls, live canvas preview.
+- [x] iOS-style preview overlay (`PreviewPanelWindow`/`PreviewPanelPresenter`): card stack,
+      hover actions, drag-out, auto-close, acrylic, capture exclusion.
+- [x] iOS-style settings window: sidebar + grouped panes + toggle switches, all ported settings,
+      card-action layout editor.
+- [x] App infra: `AcrylicHelper`, `ShutterSound`, `CountdownOverlay` (self-timer), single-instance
+      relaunch surfaces Settings when the tray icon is hidden.
+- [x] Tests: 25 new background-model tests (187 total green).
+- [ ] Manual QA: wallpaper pack download, camera/blur export fidelity, acrylic on Win10 vs Win11.
+
 ### Build progress log
 - **2026-08-24 P0**: scaffold, tray, mutex, manifest, build.ps1. `1264bdf`
 - **2026-08-24 P1**: monitor enumeration, GDI display capture, hotkeys 1/2/3, conflict toast, trace log, E2E scripts. `49e4ac0`
@@ -459,3 +512,4 @@ Live status board. Update as phases complete; keep §5 acceptance text authorita
 - **2026-08-26 scope**: sharing/uploading removed from Windows scope `e0e7130` — it was only ever deferred plan text (no code); captures are local-only.
 - **2026-08-26 P7**: crash log (`CrashReport` pure Core + writer, wired into all three exception handlers) `2d7fe85`; launch-at-login Run key toggle `9d58c77`; user-configurable hotkeys (`HotkeyCombo` parse/format + settings normalization + in-place `Reload`) `e42eee8`; settings window (General/Screenshots/Hotkeys/About tabs, key-capture recorder boxes, atomic apply) `1a3e6be`; Inno Setup per-user installer + build script, ISCC-verified `7463973`. **Phase 7 complete** (manual install QA open). 138/138 tests green.
 - **2026-08-26 zoom/pan**: `ZoomPanTransform` pure Core transform with 11 unit tests `9ff76d6` (plus removal of an unused `Viewport` draft swept in by mistake `9802342`); canvas wheel-zoom at cursor, middle-drag pan, display-resolution preview rebuild, toolbar zoom controls + shortcuts `b5f8dcc`. Closes the last open Phase 5 acceptance item. 149/149 tests green.
+- **2026-08-28 P8**: iOS visual parity + background mockups. Core background/camera/blur/watermark models + preset/wallpaper stores; `BackgroundRenderer` compositor (fill/padding/corners/shadow/border/3D camera/progressive blur/watermark) with wallpaper decode cache; annotation sidecar carries background; editor `BackgroundInspector` tab with live flat canvas preview; iOS-style preview overlay (card stack, hover actions, drag-out, acrylic) and settings window (sidebar + grouped panes + toggle switches); app infra (acrylic, shutter sound, self-timer countdown, relaunch-to-settings). 25 new tests; 187/187 green; full solution builds clean.
