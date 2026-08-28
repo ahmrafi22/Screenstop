@@ -28,15 +28,26 @@ if (-not $iscc) {
     throw "ISCC.exe not found. Install Inno Setup 6: winget install JRSoftware.InnoSetup"
 }
 
-# 3. Compile the installer. Retry once: antivirus occasionally holds the
-#    output file during the icon resource update (transient error 110).
-Write-Host "Compiling installer with $iscc..." -ForegroundColor Cyan
-& $iscc "$PSScriptRoot\Screenstop.iss"
-if ($LASTEXITCODE -ne 0) {
-    Write-Host "Retrying after 3s (antivirus lock)..." -ForegroundColor Yellow
-    Start-Sleep -Seconds 3
-    & $iscc "$PSScriptRoot\Screenstop.iss"
-    if ($LASTEXITCODE -ne 0) { throw "ISCC failed" }
+# 3. Compile the installer into a staging dir OUTSIDE the repo, then copy it
+#    back. The repo lives under OneDrive, and OneDrive/antivirus sync can lock
+#    the freshly created Setup.exe during the in-place icon resource update
+#    (EndUpdateResource error 110). Building outside the synced folder avoids it.
+$staging = Join-Path ([System.IO.Path]::GetTempPath()) ("Screenstop-installer-" + [guid]::NewGuid().ToString("N"))
+New-Item -ItemType Directory -Force -Path $staging | Out-Null
+try {
+    Write-Host "Compiling installer with $iscc..." -ForegroundColor Cyan
+    & $iscc "/O$staging" "$PSScriptRoot\Screenstop.iss"
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "Retrying after 3s..." -ForegroundColor Yellow
+        Start-Sleep -Seconds 3
+        & $iscc "/O$staging" "$PSScriptRoot\Screenstop.iss"
+        if ($LASTEXITCODE -ne 0) { throw "ISCC failed" }
+    }
+
+    New-Item -ItemType Directory -Force -Path "$PSScriptRoot\Output" | Out-Null
+    Get-ChildItem "$staging\*.exe" | ForEach-Object { Copy-Item $_.FullName "$PSScriptRoot\Output\" -Force }
+} finally {
+    Remove-Item -Recurse -Force $staging -ErrorAction SilentlyContinue
 }
 
 Write-Host ""
