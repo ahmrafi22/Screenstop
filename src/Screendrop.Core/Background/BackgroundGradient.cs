@@ -12,6 +12,14 @@ public sealed record BackgroundGradient(
     public static readonly IReadOnlyList<BackgroundGradient> Presets = new[]
     {
         new BackgroundGradient(
+            "serene", "Serene Skies",
+            Stops(("serene-a", "Serene A", 0.45, 0.68, 0.94), ("serene-b", "Serene B", 0.66, 0.84, 0.97), ("serene-c", "Serene C", 0.92, 0.96, 0.99)),
+            GradientPoint.Top, GradientPoint.Bottom),
+        new BackgroundGradient(
+            "frost", "Frosted Glass",
+            Stops(("frost-a", "Frost A", 0.93, 0.97, 0.98), ("frost-b", "Frost B", 0.72, 0.88, 0.93), ("frost-c", "Frost C", 0.52, 0.71, 0.88)),
+            GradientPoint.TopLeading, GradientPoint.BottomTrailing),
+        new BackgroundGradient(
             "aurora", "Aurora",
             Stops(("aurora-a", "Aurora A", 0.98, 0.31, 0.58), ("aurora-b", "Aurora B", 0.40, 0.32, 0.95), ("aurora-c", "Aurora C", 0.29, 0.84, 0.80)),
             GradientPoint.TopLeading, GradientPoint.BottomTrailing),
