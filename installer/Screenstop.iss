@@ -11,7 +11,7 @@
 ; Output: installer\Output\Screenstop-Setup-<version>.exe
 
 #define MyAppName "Screenstop"
-#define MyAppVersion "1.1.3"
+#define MyAppVersion "1.1.4"
 #define MyAppPublisher "Screenstop"
 #define MyAppExeName "Screenstop.exe"
 #define MyAppURL "https://github.com/ahmrafi22/Screenstop-Windows"
