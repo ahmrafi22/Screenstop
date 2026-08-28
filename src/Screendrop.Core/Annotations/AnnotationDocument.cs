@@ -1,11 +1,14 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Screendrop.Core.Background;
 
 namespace Screendrop.Core.Annotations;
 
 /// Persisted edit state for a screenshot, stored next to the image as
 /// `<image>.screendrop` (mac parity: non-destructive, re-openable edits).
-/// All geometry is normalized [0,1] relative to the base image.
+/// All geometry is normalized [0,1] relative to the base image. The optional
+/// Background carries the mockup stage (fill/camera/blur/border/watermark)
+/// and round-trips exactly like mac's StoredBackground.
 public sealed class AnnotationDocument
 {
     public const int CurrentVersion = 1;
@@ -20,10 +23,13 @@ public sealed class AnnotationDocument
 
     public List<Annotation> Annotations { get; set; } = new();
 
+    public BackgroundSettings? Background { get; set; }
+
     public AnnotationDocument Clone() => new()
     {
         Version = Version,
         Annotations = Annotations.Select(a => a.Clone()).ToList(),
+        Background = Background?.Clone(),
     };
 
     public static string SidecarPathFor(string imagePath) => imagePath + ".screendrop";
