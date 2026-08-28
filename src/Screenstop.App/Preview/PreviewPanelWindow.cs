@@ -4,24 +4,41 @@ using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
+using System.Windows.Media.Animation;
+using System.Windows.Media.Effects;
 using System.Windows.Media.Imaging;
+using Screenstop.Core.Background;
 using Screenstop.Core.Preview;
 
 namespace Screenstop.App.Preview;
 
-internal enum PreviewAction { Save, Copy, Edit, Discard }
-
+/// Floating preview stack (mac PreviewWindowView parity): a vertical stack of
+/// rounded screenshot cards docked to a bottom screen corner. Cards slide in
+/// from the edge; hovering reveals a frosted overlay with corner icon buttons
+/// and center action pills, laid out by the user's OverlayCardLayout.
 internal sealed class PreviewPanelWindow : Window
 {
-    internal const double CardWidthDip = 180;
-    internal const double CardHeightDip = 138;
-    internal const double CardPitchDip = 8;
-    internal const double PaddingDip = 12;
-    internal const double PanelHeightDip = CardHeightDip + PaddingDip * 2;
+    internal const double CardWidthDip = 165;
+    internal const double CardHeightDip = 124;
+    internal const double CardSpacingDip = 15;
+    internal const double CardRadius = 16;
+    internal const double SlideOffsetDip = CardWidthDip + 76;
+
+    private static readonly Typeface IconTypeface = new(
+        new FontFamily("Segoe Fluent Icons, Segoe MDL2 Assets"),
+        FontStyles.Normal,
+        FontWeights.Bold,
+        FontStretches.Normal);
 
     private readonly StackPanel _cardsPanel;
+    private readonly Border _peekPill;
+    private readonly TextBlock _peekText;
+    private int _previousCardCount;
+    private bool _collapsed;
 
-    public event Action<PreviewEntry, PreviewAction>? ActionRequested;
+    public event Action<PreviewEntry, CardAction>? ActionRequested;
+
+    public event Action? DraggedOut;
 
     public PreviewPanelWindow()
     {
@@ -33,28 +50,42 @@ internal sealed class PreviewPanelWindow : Window
         ResizeMode = ResizeMode.NoResize;
         Title = "ScreenstopPreviewPanel";
 
-        var border = new Border
+        _cardsPanel = new StackPanel { Orientation = Orientation.Vertical };
+
+        _peekText = new TextBlock
         {
-            Background = new SolidColorBrush(Color.FromArgb(240, 31, 41, 55)),
-            CornerRadius = new CornerRadius(10),
-            Padding = new Thickness(PaddingDip),
+            Foreground = Brushes.White,
+            FontSize = 12,
+            FontWeight = FontWeights.SemiBold,
+            VerticalAlignment = VerticalAlignment.Center,
         };
-
-        _cardsPanel = new StackPanel { Orientation = Orientation.Horizontal };
-        border.Child = _cardsPanel;
-
-        Content = border;
-
-        MouseLeftButtonDown += (_, e) =>
+        _peekPill = new Border
         {
-            if (e.OriginalSource is not ButtonBase)
-            {
-                DragMove();
-            }
+            Background = new SolidColorBrush(Color.FromArgb(217, 28, 29, 34)),
+            CornerRadius = new CornerRadius(17),
+            BorderBrush = new SolidColorBrush(Color.FromArgb(31, 255, 255, 255)),
+            BorderThickness = new Thickness(1),
+            Padding = new Thickness(14, 7, 14, 7),
+            Cursor = Cursors.Hand,
+            Visibility = Visibility.Collapsed,
+            Child = _peekText,
         };
+        _peekPill.MouseLeftButtonUp += (_, _) => SetCollapsed(false);
+
+        var root = new Grid();
+        root.Children.Add(_cardsPanel);
+        root.Children.Add(new StackPanel
+        {
+            VerticalAlignment = VerticalAlignment.Bottom,
+            HorizontalAlignment = HorizontalAlignment.Right,
+            Children = { _peekPill },
+        });
+        Content = root;
     }
 
     public IntPtr WindowHandle => new WindowInteropHelper(this).Handle;
+
+    public bool IsCollapsed => _collapsed;
 
     public void ShowPanel()
     {
@@ -66,80 +97,350 @@ internal sealed class PreviewPanelWindow : Window
     public void HidePanel()
     {
         Visibility = Visibility.Collapsed;
+        _collapsed = false;
+        _cardsPanel.Visibility = Visibility.Visible;
+        _peekPill.Visibility = Visibility.Collapsed;
     }
 
-    public void SetCards(IReadOnlyList<(PreviewEntry Entry, BitmapSource? Thumbnail)> cards)
+    public void SetCollapsed(bool collapsed)
+    {
+        _collapsed = collapsed;
+        _cardsPanel.Visibility = collapsed ? Visibility.Collapsed : Visibility.Visible;
+        _peekPill.Visibility = collapsed ? Visibility.Visible : Visibility.Collapsed;
+        CollapsedChanged?.Invoke();
+    }
+
+    public event Action? CollapsedChanged;
+
+    public void SetPeekCount(int count)
+    {
+        _peekText.Text = count == 1 ? "1 screenshot" : $"{count} screenshots";
+    }
+
+    public void SetCards(
+        IReadOnlyList<(PreviewEntry Entry, BitmapSource? Thumbnail)> cards,
+        OverlayCardLayout layout,
+        bool dockRight,
+        int visibleCapacity)
     {
         _cardsPanel.Children.Clear();
 
-        foreach (var (entry, thumbnail) in cards)
+        bool animateEntrance = cards.Count > _previousCardCount;
+        _previousCardCount = cards.Count;
+
+        // Oldest at the top, newest nearest the screen corner (mac parity).
+        var ordered = cards.Reverse().Take(visibleCapacity).Reverse().ToList();
+        foreach (var (entry, thumbnail) in ordered)
         {
-            var card = BuildCard(entry, thumbnail);
+            var card = BuildCard(entry, thumbnail, layout, dockRight);
             _cardsPanel.Children.Add(card);
+        }
+
+        if (animateEntrance && !_collapsed)
+        {
+            AnimateEntrance(dockRight);
         }
     }
 
-    private UIElement BuildCard(PreviewEntry entry, BitmapSource? thumbnail)
+    private void AnimateEntrance(bool dockRight)
+    {
+        double from = dockRight ? SlideOffsetDip : -SlideOffsetDip;
+        foreach (UIElement child in _cardsPanel.Children)
+        {
+            var translate = new TranslateTransform(from, 0);
+            child.RenderTransform = translate;
+            child.Opacity = 0;
+
+            var slide = new DoubleAnimation(0, TimeSpan.FromSeconds(0.3))
+            {
+                EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut },
+            };
+            var fade = new DoubleAnimation(1, TimeSpan.FromSeconds(0.22));
+            translate.BeginAnimation(TranslateTransform.XProperty, slide);
+            child.BeginAnimation(OpacityProperty, fade);
+        }
+    }
+
+    private UIElement BuildCard(
+        PreviewEntry entry,
+        BitmapSource? thumbnail,
+        OverlayCardLayout layout,
+        bool dockRight)
     {
         var image = new Image
         {
             Source = thumbnail,
-            Width = CardWidthDip,
-            Height = 96,
             Stretch = Stretch.UniformToFill,
-            VerticalAlignment = VerticalAlignment.Top,
-            ClipToBounds = true,
         };
 
-        var caption = new TextBlock
-        {
-            Text = $"{entry.CapturedAt:HH:mm:ss} · {entry.CaptureType}",
-            Foreground = Brushes.White,
-            FontSize = 10,
-            Margin = new Thickness(0, 4, 0, 0),
-            HorizontalAlignment = HorizontalAlignment.Center,
-        };
+        var hoverOverlay = BuildHoverOverlay(entry, thumbnail, layout);
+        hoverOverlay.Opacity = 0;
+        hoverOverlay.Visibility = Visibility.Collapsed;
 
-        var actions = new StackPanel
-        {
-            Orientation = Orientation.Horizontal,
-            HorizontalAlignment = HorizontalAlignment.Center,
-            Margin = new Thickness(0, 4, 0, 0),
-            Visibility = Visibility.Collapsed,
-        };
-
-        var save = new Button { Content = "Save", FontSize = 9, Padding = new Thickness(3, 1, 3, 1), Tag = entry };
-        save.Click += (_, e) => { e.Handled = true; ActionRequested?.Invoke(entry, PreviewAction.Save); };
-        var copy = new Button { Content = "Copy", FontSize = 9, Padding = new Thickness(3, 1, 3, 1), Tag = entry, Margin = new Thickness(4, 0, 0, 0) };
-        copy.Click += (_, e) => { e.Handled = true; ActionRequested?.Invoke(entry, PreviewAction.Copy); };
-        var edit = new Button { Content = "Edit", FontSize = 9, Padding = new Thickness(3, 1, 3, 1), Tag = entry, Margin = new Thickness(4, 0, 0, 0) };
-        edit.Click += (_, e) => { e.Handled = true; ActionRequested?.Invoke(entry, PreviewAction.Edit); };
-        var discard = new Button { Content = "✕", FontSize = 9, Padding = new Thickness(3, 1, 3, 1), Tag = entry, Margin = new Thickness(4, 0, 0, 0) };
-        discard.Click += (_, e) => { e.Handled = true; ActionRequested?.Invoke(entry, PreviewAction.Discard); };
-
-        actions.Children.Add(save);
-        actions.Children.Add(copy);
-        actions.Children.Add(edit);
-        actions.Children.Add(discard);
-
-        var stack = new StackPanel { Orientation = Orientation.Vertical };
-        stack.Children.Add(image);
-        stack.Children.Add(caption);
-        stack.Children.Add(actions);
+        var content = new Grid();
+        content.Children.Add(image);
+        content.Children.Add(hoverOverlay);
 
         var card = new Border
         {
-            Background = new SolidColorBrush(Color.FromArgb(220, 55, 65, 81)),
-            CornerRadius = new CornerRadius(8),
-            Child = stack,
+            CornerRadius = new CornerRadius(CardRadius),
+            BorderBrush = new SolidColorBrush(Color.FromArgb(64, 255, 255, 255)),
+            BorderThickness = new Thickness(1),
+            ClipToBounds = false,
             Width = CardWidthDip,
             Height = CardHeightDip,
-            Margin = new Thickness(0, 0, CardPitchDip, 0),
+            Margin = new Thickness(0, 0, 0, CardSpacingDip),
+            Cursor = Cursors.Hand,
+            Effect = new DropShadowEffect
+            {
+                Color = Colors.Black,
+                Opacity = 0.32,
+                BlurRadius = 22,
+                ShadowDepth = 6,
+                Direction = 270,
+            },
+            Child = new Border
+            {
+                CornerRadius = new CornerRadius(CardRadius - 0.5),
+                ClipToBounds = true,
+                Child = content,
+            },
         };
 
-        card.MouseEnter += (_, _) => actions.Visibility = Visibility.Visible;
-        card.MouseLeave += (_, _) => actions.Visibility = Visibility.Collapsed;
+        card.MouseEnter += (_, _) =>
+        {
+            hoverOverlay.Visibility = Visibility.Visible;
+            hoverOverlay.BeginAnimation(OpacityProperty,
+                new DoubleAnimation(1, TimeSpan.FromSeconds(0.15)));
+        };
+        card.MouseLeave += (_, _) =>
+        {
+            var fade = new DoubleAnimation(0, TimeSpan.FromSeconds(0.18));
+            fade.Completed += (_, _) => hoverOverlay.Visibility = Visibility.Collapsed;
+            hoverOverlay.BeginAnimation(OpacityProperty, fade);
+        };
+
+        card.MouseLeftButtonDown += (_, e) =>
+        {
+            if (e.OriginalSource is ButtonBase)
+            {
+                return;
+            }
+
+            BeginCardDrag(entry, dockRight);
+        };
 
         return card;
+    }
+
+    /// Frosted hover overlay: a blurred copy of the thumbnail under a dark
+    /// scrim stands in for SwiftUI's `.ultraThinMaterial`.
+    private UIElement BuildHoverOverlay(
+        PreviewEntry entry, BitmapSource? thumbnail, OverlayCardLayout layout)
+    {
+        var overlay = new Grid { IsHitTestVisible = true };
+
+        if (thumbnail is not null)
+        {
+            overlay.Children.Add(new Image
+            {
+                Source = thumbnail,
+                Stretch = Stretch.UniformToFill,
+                Effect = new BlurEffect { Radius = 14, KernelType = KernelType.Gaussian },
+                RenderTransform = new ScaleTransform(1.12, 1.12),
+                RenderTransformOrigin = new Point(0.5, 0.5),
+                IsHitTestVisible = false,
+            });
+        }
+
+        overlay.Children.Add(new System.Windows.Shapes.Rectangle
+        {
+            Fill = new SolidColorBrush(Color.FromArgb(110, 0, 0, 0)),
+            IsHitTestVisible = false,
+        });
+
+        AddCornerButton(overlay, layout.TopLeading, entry, HorizontalAlignment.Left, VerticalAlignment.Top);
+        AddCornerButton(overlay, layout.TopTrailing, entry, HorizontalAlignment.Right, VerticalAlignment.Top);
+        AddCornerButton(overlay, layout.BottomLeading, entry, HorizontalAlignment.Left, VerticalAlignment.Bottom);
+        AddCornerButton(overlay, layout.BottomTrailing, entry, HorizontalAlignment.Right, VerticalAlignment.Bottom);
+
+        if (layout.Center.Count > 0)
+        {
+            var pills = new StackPanel
+            {
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center,
+            };
+            foreach (var action in layout.Center)
+            {
+                pills.Children.Add(BuildPill(entry, action));
+            }
+
+            overlay.Children.Add(pills);
+        }
+
+        return overlay;
+    }
+
+    private void AddCornerButton(
+        Grid overlay,
+        CardAction? action,
+        PreviewEntry entry,
+        HorizontalAlignment horizontal,
+        VerticalAlignment vertical)
+    {
+        if (action is null)
+        {
+            return;
+        }
+
+        var button = new Button
+        {
+            Width = 22,
+            Height = 22,
+            Margin = new Thickness(9),
+            HorizontalAlignment = horizontal,
+            VerticalAlignment = vertical,
+            ToolTip = action.Value.Help(),
+            Cursor = Cursors.Hand,
+            Focusable = false,
+            Template = CornerButtonTemplate(),
+            Content = new TextBlock
+            {
+                Text = action.Value.Glyph(),
+                FontFamily = IconTypeface.FontFamily,
+                FontSize = 10,
+                FontWeight = FontWeights.Bold,
+                Foreground = Brushes.Black,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center,
+            },
+        };
+        button.Click += (_, e) =>
+        {
+            e.Handled = true;
+            ActionRequested?.Invoke(entry, action.Value);
+        };
+        overlay.Children.Add(button);
+    }
+
+    private static ControlTemplate CornerButtonTemplate()
+    {
+        var template = new ControlTemplate(typeof(Button));
+        var border = new FrameworkElementFactory(typeof(Border));
+        border.SetValue(Border.BackgroundProperty, Brushes.White);
+        border.SetValue(Border.CornerRadiusProperty, new CornerRadius(11));
+        border.SetValue(Border.EffectProperty, new DropShadowEffect
+        {
+            Color = Colors.Black,
+            Opacity = 0.22,
+            BlurRadius = 3,
+            ShadowDepth = 1,
+            Direction = 270,
+        });
+        var presenter = new FrameworkElementFactory(typeof(ContentPresenter));
+        presenter.SetValue(ContentPresenter.HorizontalAlignmentProperty, HorizontalAlignment.Center);
+        presenter.SetValue(ContentPresenter.VerticalAlignmentProperty, VerticalAlignment.Center);
+        border.AppendChild(presenter);
+        template.VisualTree = border;
+
+        template.Triggers.Add(new Trigger
+        {
+            Property = IsMouseOverProperty,
+            Value = true,
+            Setters = { new Setter(UIElement.OpacityProperty, 0.85) },
+        });
+        template.Triggers.Add(new Trigger
+        {
+            Property = ButtonBase.IsPressedProperty,
+            Value = true,
+            Setters = { new Setter(UIElement.OpacityProperty, 0.7) },
+        });
+        return template;
+    }
+
+    private UIElement BuildPill(PreviewEntry entry, CardAction action)
+    {
+        var pill = new Button
+        {
+            Margin = new Thickness(0, 3, 0, 3),
+            HorizontalAlignment = HorizontalAlignment.Center,
+            Cursor = Cursors.Hand,
+            Focusable = false,
+            Template = PillTemplate(),
+            Content = new TextBlock
+            {
+                Text = action.Title(),
+                FontSize = 12,
+                FontWeight = FontWeights.SemiBold,
+                Foreground = new SolidColorBrush(Color.FromRgb(24, 24, 26)),
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center,
+            },
+        };
+        pill.Click += (_, e) =>
+        {
+            e.Handled = true;
+            ActionRequested?.Invoke(entry, action);
+        };
+        return pill;
+    }
+
+    private static ControlTemplate PillTemplate()
+    {
+        var template = new ControlTemplate(typeof(Button));
+        var border = new FrameworkElementFactory(typeof(Border));
+        border.SetValue(Border.BackgroundProperty, new SolidColorBrush(Color.FromArgb(217, 255, 255, 255)));
+        border.SetValue(Border.CornerRadiusProperty, new CornerRadius(12));
+        border.SetValue(Border.PaddingProperty, new Thickness(13, 6, 13, 6));
+        border.SetValue(Border.EffectProperty, new DropShadowEffect
+        {
+            Color = Colors.Black,
+            Opacity = 0.22,
+            BlurRadius = 3,
+            ShadowDepth = 1,
+            Direction = 270,
+        });
+        var presenter = new FrameworkElementFactory(typeof(ContentPresenter));
+        presenter.SetValue(ContentPresenter.HorizontalAlignmentProperty, HorizontalAlignment.Center);
+        presenter.SetValue(ContentPresenter.VerticalAlignmentProperty, VerticalAlignment.Center);
+        border.AppendChild(presenter);
+        template.VisualTree = border;
+
+        template.Triggers.Add(new Trigger
+        {
+            Property = IsMouseOverProperty,
+            Value = true,
+            Setters = { new Setter(UIElement.OpacityProperty, 0.88) },
+        });
+        template.Triggers.Add(new Trigger
+        {
+            Property = ButtonBase.IsPressedProperty,
+            Value = true,
+            Setters = { new Setter(UIElement.OpacityProperty, 0.72) },
+        });
+        return template;
+    }
+
+    /// Drags the capture out as a file (mac draggable(item.url) parity). When
+    /// the drop lands in another app the presenter dismisses the preview if
+    /// previewCloseAfterDragging is on.
+    private void BeginCardDrag(PreviewEntry entry, bool dockRight)
+    {
+        try
+        {
+            var data = new DataObject();
+            var files = new System.Collections.Specialized.StringCollection { entry.ImagePath };
+            data.SetFileDropList(files);
+
+            var result = DragDrop.DoDragDrop(this, data, DragDropEffects.Copy);
+            if (result != DragDropEffects.None)
+            {
+                DraggedOut?.Invoke();
+            }
+        }
+        catch (Exception)
+        {
+        }
     }
 }

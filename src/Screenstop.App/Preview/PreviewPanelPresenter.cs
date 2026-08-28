@@ -1,11 +1,13 @@
 using System.IO;
 using System.Windows;
 using System.Windows.Media.Imaging;
+using System.Windows.Threading;
 using Screenstop.App.Capture;
 using Screenstop.App.Editor;
 using Screenstop.App.Infrastructure;
 using Screenstop.Capture;
 using Screenstop.Core.Annotations;
+using Screenstop.Core.Background;
 using Screenstop.Core.Geometry;
 using Screenstop.Core.History;
 using Screenstop.Core.Preview;
@@ -19,8 +21,10 @@ internal sealed class PreviewPanelPresenter
 {
     private readonly PreviewStack _stack = new(maxCount: 6);
     private readonly CaptureCoordinator.NotifyHandler _notify;
+    private readonly OverlayCardLayoutStore _layoutStore = new();
     private PreviewPanelWindow? _window;
     private MonitorInfo? _targetMonitor;
+    private DispatcherTimer? _autoCloseTimer;
 
     public PreviewPanelPresenter(CaptureCoordinator.NotifyHandler notify)
     {
@@ -30,6 +34,12 @@ internal sealed class PreviewPanelPresenter
 
     public void OnCapture(AfterCaptureResult result, string captureType)
     {
+        var settings = SettingsStore.Load();
+        if (!settings.AfterCaptureShowOverlay)
+        {
+            return;
+        }
+
         var entry = new PreviewEntry(result.StagingPath, result.SavedPath, captureType, DateTimeOffset.Now);
         _stack.Push(entry);
 
@@ -38,18 +48,31 @@ internal sealed class PreviewPanelPresenter
         // happens to hold the foreground window.
         _targetMonitor = MonitorEnumerator.GetMonitorForPoint(result.OriginX, result.OriginY);
         Show();
+        RestartAutoClose(settings);
+    }
+
+    /// Opens the annotation editor directly (after-capture "annotate" action).
+    public void OpenEditor(AfterCaptureResult result)
+    {
+        var entry = _stack.Items.FirstOrDefault(e => e.StagingPath == result.StagingPath);
+        if (entry is not null)
+        {
+            Edit(entry);
+        }
     }
 
     public void Show()
     {
         EnsureWindow();
+        _window!.SetCollapsed(false);
         PositionWindow();
         Refresh();
-        _window!.ShowPanel();
+        _window.ShowPanel();
     }
 
     public void Shutdown()
     {
+        _autoCloseTimer?.Stop();
         _window?.Close();
         _window = null;
     }
@@ -58,20 +81,39 @@ internal sealed class PreviewPanelPresenter
     {
         if (_window is not null)
         {
+            ApplyCaptureExclusion(_window);
             return;
         }
 
         var window = new PreviewPanelWindow();
         window.ActionRequested += OnAction;
+        window.DraggedOut += OnDraggedOut;
+        window.CollapsedChanged += PositionWindow;
         window.Show();
 
+        AcrylicHelper.TryEnableAcrylic(window, 0x00000000);
+        ApplyCaptureExclusion(window);
+
+        _window = window;
+    }
+
+    private static void ApplyCaptureExclusion(PreviewPanelWindow window)
+    {
         IntPtr handle = window.WindowHandle;
-        if (handle != IntPtr.Zero)
+        if (handle == IntPtr.Zero)
+        {
+            return;
+        }
+
+        bool includeInCaptures = SettingsStore.Load().IncludeAppWindowsInCaptures;
+        if (includeInCaptures)
+        {
+            DisplayAffinity.IncludeInCapture(handle);
+        }
+        else
         {
             DisplayAffinity.ExcludeFromCapture(handle);
         }
-
-        _window = window;
     }
 
     private void PositionWindow()
@@ -82,21 +124,31 @@ internal sealed class PreviewPanelPresenter
             return;
         }
 
+        var settings = SettingsStore.Load();
         var (scaleX, scaleY) = MonitorGeometry.GetScale(monitor);
-        int cardCount = _stack.Items.Count;
-        double panelWidthDip = (cardCount * PreviewPanelWindow.CardWidthDip)
-            + (Math.Max(0, cardCount - 1) * PreviewPanelWindow.CardPitchDip)
-            + (PreviewPanelWindow.PaddingDip * 2);
+        bool dockRight = settings.PreviewPosition == PreviewPosition.Right;
 
-        double maxWidthDip = (monitor.PhysicalBounds.Width / scaleX) - 20;
-        if (panelWidthDip > maxWidthDip)
+        double widthDip;
+        double heightDip;
+        if (_window.IsCollapsed)
         {
-            panelWidthDip = Math.Max(PreviewPanelWindow.CardWidthDip + (PreviewPanelWindow.PaddingDip * 2), maxWidthDip);
+            widthDip = 140;
+            heightDip = 40;
+        }
+        else
+        {
+            int cardCount = Math.Min(_stack.Items.Count, VisibleCapacity(monitor, scaleY));
+            cardCount = Math.Max(cardCount, 1);
+            widthDip = PreviewPanelWindow.CardWidthDip + 16;
+            heightDip = cardCount * PreviewPanelWindow.CardHeightDip
+                + Math.Max(0, cardCount - 1) * PreviewPanelWindow.CardSpacingDip
+                + 16;
         }
 
-        int panelWidthPhys = (int)Math.Round(panelWidthDip * scaleX);
-        int panelHeightPhys = (int)Math.Round(PreviewPanelWindow.PanelHeightDip * scaleY);
-        var placement = PlacementResolver.ResolveBottomCenter(monitor.PhysicalBounds, panelWidthPhys, panelHeightPhys);
+        int widthPhys = (int)Math.Round(widthDip * scaleX);
+        int heightPhys = (int)Math.Round(heightDip * scaleY);
+        var placement = PlacementResolver.ResolveBottomCorner(
+            monitor.PhysicalBounds, widthPhys, heightPhys, dockRight);
 
         _window.Width = placement.Width / scaleX;
         _window.Height = placement.Height / scaleY;
@@ -104,8 +156,25 @@ internal sealed class PreviewPanelPresenter
         _window.Top = placement.Y / scaleY;
     }
 
+    private static int VisibleCapacity(MonitorInfo monitor, double scaleY)
+    {
+        double monitorHeightDip = monitor.PhysicalBounds.Height / scaleY;
+        int capacity = (int)((monitorHeightDip - 120) / (PreviewPanelWindow.CardHeightDip + PreviewPanelWindow.CardSpacingDip));
+        return Math.Clamp(capacity, 1, 6);
+    }
+
     private void Refresh()
     {
+        if (_window is null)
+        {
+            return;
+        }
+
+        var monitor = _targetMonitor ?? MonitorEnumerator.GetFocusedMonitor();
+        var settings = SettingsStore.Load();
+        var (scaleX, scaleY) = monitor is null ? (1.0, 1.0) : MonitorGeometry.GetScale(monitor);
+        int capacity = monitor is null ? 6 : VisibleCapacity(monitor, scaleY);
+
         var cards = new List<(PreviewEntry Entry, BitmapSource? Thumbnail)>();
         foreach (var entry in _stack.Items)
         {
@@ -113,24 +182,74 @@ internal sealed class PreviewPanelPresenter
             cards.Add((entry, BitmapSourceConverter.FromFileComposited(entry.ImagePath, 320)));
         }
 
-        _window?.SetCards(cards);
+        _window.SetPeekCount(_stack.Items.Count);
+        _window.SetCards(cards, _layoutStore.Layout, settings.PreviewPosition == PreviewPosition.Right, capacity);
     }
 
-    private void OnAction(PreviewEntry entry, PreviewAction action)
+    private void RestartAutoClose(ScreenstopSettings settings)
+    {
+        _autoCloseTimer?.Stop();
+        if (settings.PreviewAutoCloseSeconds <= 0)
+        {
+            _autoCloseTimer = null;
+            return;
+        }
+
+        _autoCloseTimer ??= new DispatcherTimer(DispatcherPriority.Background)
+        {
+            Interval = TimeSpan.FromSeconds(settings.PreviewAutoCloseSeconds),
+        };
+        _autoCloseTimer.Interval = TimeSpan.FromSeconds(settings.PreviewAutoCloseSeconds);
+        _autoCloseTimer.Tick -= OnAutoCloseTick;
+        _autoCloseTimer.Tick += OnAutoCloseTick;
+        _autoCloseTimer.Start();
+    }
+
+    private void OnAutoCloseTick(object? sender, EventArgs e)
+    {
+        // Mac parity: the overlay stays while it is being used.
+        if (_window is { IsMouseOver: true })
+        {
+            return;
+        }
+
+        _autoCloseTimer?.Stop();
+        _window?.HidePanel();
+    }
+
+    private void OnDraggedOut()
+    {
+        var settings = SettingsStore.Load();
+        if (settings.PreviewCloseAfterDragging)
+        {
+            _window?.HidePanel();
+        }
+    }
+
+    private void OnAction(PreviewEntry entry, CardAction action)
     {
         switch (action)
         {
-            case PreviewAction.Save:
+            case CardAction.Save:
                 Save(entry);
                 break;
-            case PreviewAction.Copy:
+            case CardAction.Copy:
                 Copy(entry);
                 break;
-            case PreviewAction.Edit:
+            case CardAction.Compress:
+                CopyCompressed(entry);
+                break;
+            case CardAction.Annotate:
                 Edit(entry);
                 break;
-            case PreviewAction.Discard:
+            case CardAction.View:
+                Reveal(entry);
+                break;
+            case CardAction.Delete:
                 Remove(entry);
+                break;
+            case CardAction.Close:
+                _window?.HidePanel();
                 break;
         }
     }
@@ -141,6 +260,13 @@ internal sealed class PreviewPanelPresenter
         {
             _notify("Screenshot", "Already saved.");
             Remove(entry);
+            return;
+        }
+
+        var settings = SettingsStore.Load();
+        if (!settings.EffectiveSaveButtonUsesFolder)
+        {
+            SaveWithDialog(entry, settings);
             return;
         }
 
@@ -155,17 +281,17 @@ internal sealed class PreviewPanelPresenter
                     throw new InvalidOperationException("Could not load the image.");
                 }
 
-                var settings = SettingsStore.Load();
                 string directory = string.IsNullOrWhiteSpace(settings.ExportDirectoryPath)
                     ? SettingsStore.DefaultExportDirectoryPath
                     : settings.ExportDirectoryPath;
                 Directory.CreateDirectory(directory);
 
-                string extension = settings.AutoCompress ? "jpg" : "png";
+                bool useJpeg = settings.ExportFormat == ExportFormat.Jpeg;
+                string extension = useJpeg ? "jpg" : "png";
                 string fileName = FileNaming.BuildFileName(settings.FileNamePattern, entry.CapturedAt, entry.CaptureType, extension);
                 string path = FileNaming.ResolveUnique(directory, fileName);
 
-                byte[] bytes = settings.AutoCompress
+                byte[] bytes = useJpeg
                     ? JpegCompressor.Encode(bitmap, settings.CompressionQuality)
                     : JpegCompressor.EncodePng(bitmap);
                 File.WriteAllBytes(path, bytes);
@@ -176,6 +302,50 @@ internal sealed class PreviewPanelPresenter
             catch (Exception ex)
             {
                 // Mac parity: a failed save keeps the card so the user can retry.
+                Notify("Save failed", ex.Message);
+            }
+        });
+    }
+
+    private void SaveWithDialog(PreviewEntry entry, ScreenstopSettings settings)
+    {
+        var dialog = new Microsoft.Win32.SaveFileDialog
+        {
+            Title = "Save screenshot",
+            Filter = "PNG image|*.png|JPEG image|*.jpg",
+            FileName = FileNaming.BuildFileName(settings.FileNamePattern, entry.CapturedAt, entry.CaptureType, "png"),
+            InitialDirectory = Directory.Exists(settings.ExportDirectoryPath)
+                ? settings.ExportDirectoryPath
+                : SettingsStore.DefaultExportDirectoryPath,
+        };
+
+        if (_window is not null && dialog.ShowDialog(_window) != true)
+        {
+            return;
+        }
+
+        string destination = dialog.FileName;
+        Task.Run(() =>
+        {
+            try
+            {
+                using var bitmap = AnnotationExport.LoadComposited(entry.ImagePath);
+                if (bitmap is null)
+                {
+                    throw new InvalidOperationException("Could not load the image.");
+                }
+
+                byte[] bytes = destination.EndsWith(".jpg", StringComparison.OrdinalIgnoreCase)
+                    || destination.EndsWith(".jpeg", StringComparison.OrdinalIgnoreCase)
+                    ? JpegCompressor.Encode(bitmap, settings.CompressionQuality)
+                    : JpegCompressor.EncodePng(bitmap);
+                File.WriteAllBytes(destination, bytes);
+
+                Notify("Saved", Path.GetFileName(destination));
+                Remove(entry);
+            }
+            catch (Exception ex)
+            {
                 Notify("Save failed", ex.Message);
             }
         });
@@ -204,6 +374,59 @@ internal sealed class PreviewPanelPresenter
                 Notify("Copy failed", ex.Message);
             }
         });
+    }
+
+    /// Copies a compressed JPEG of the capture (mac "Compress" card action).
+    private void CopyCompressed(PreviewEntry entry)
+    {
+        Task.Run(() =>
+        {
+            try
+            {
+                using var bitmap = AnnotationExport.LoadComposited(entry.ImagePath);
+                if (bitmap is null)
+                {
+                    throw new InvalidOperationException("Could not load the image.");
+                }
+
+                var settings = SettingsStore.Load();
+                using var jpeg = new SKBitmap(bitmap.Info);
+                byte[] bytes = JpegCompressor.Encode(bitmap, settings.CompressionQuality);
+
+                var copy = SKBitmap.Decode(bytes);
+                if (copy is null)
+                {
+                    throw new InvalidOperationException("Could not compress the image.");
+                }
+
+                using (copy)
+                {
+                    ClipboardService.SetImage(copy);
+                }
+
+                Notify("Compressed JPG copied", string.Empty);
+            }
+            catch (Exception ex)
+            {
+                Notify("Compress failed", ex.Message);
+            }
+        });
+    }
+
+    private static void Reveal(PreviewEntry entry)
+    {
+        try
+        {
+            if (File.Exists(entry.ImagePath))
+            {
+                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(
+                    "explorer.exe", $"/select,\"{entry.ImagePath}\"")
+                { UseShellExecute = true });
+            }
+        }
+        catch (Exception)
+        {
+        }
     }
 
     private void Edit(PreviewEntry entry)
@@ -252,6 +475,7 @@ internal sealed class PreviewPanelPresenter
 
         DeleteStagingFile(entry);
         Refresh();
+        PositionWindow();
 
         if (_stack.Items.Count == 0)
         {
