@@ -2,6 +2,7 @@ using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
+using System.Windows.Input;
 using System.Windows.Media;
 using Screendrop.Core.Background;
 
@@ -511,19 +512,6 @@ internal sealed class BackgroundInspector : UserControl
         enable.Unchecked += (_, _) => { _settings.ProgressiveBlur.IsEnabled = false; Apply(); Refresh(); };
         section.Children.Add(enable);
 
-        section.Children.Add(Slider("Strength", () => _settings.ProgressiveBlur.Strength, v => _settings.ProgressiveBlur.Strength = v, 0, 48, v => $"{v:0}"));
-        section.Children.Add(Slider("Focus size", () => _settings.ProgressiveBlur.FocusSize, v => _settings.ProgressiveBlur.FocusSize = v, 0.05, 1, FormatPercent));
-        section.Children.Add(Slider("Falloff", () => _settings.ProgressiveBlur.Falloff, v => _settings.ProgressiveBlur.Falloff = v, 0.05, 1, FormatPercent));
-
-        section.Children.Add(Picker("Mode",
-            Enum.GetValues<ProgressiveBlurMode>().Select(m => m.Title()).ToArray(),
-            (int)_settings.ProgressiveBlur.Mode,
-            index =>
-            {
-                _settings.ProgressiveBlur.Mode = (ProgressiveBlurMode)index;
-                Apply();
-            }));
-
         section.Children.Add(Picker("Applies to",
             Enum.GetValues<ProgressiveBlurEdgeMode>().Select(m => m.Title()).ToArray(),
             (int)_settings.ProgressiveBlur.EdgeMode,
@@ -533,15 +521,78 @@ internal sealed class BackgroundInspector : UserControl
                 Apply();
             }));
 
+        section.Children.Add(Picker("Mode",
+            Enum.GetValues<ProgressiveBlurMode>().Select(m => m.Title()).ToArray(),
+            (int)_settings.ProgressiveBlur.Mode,
+            index =>
+            {
+                _settings.ProgressiveBlur.Mode = (ProgressiveBlurMode)index;
+                Apply();
+                Refresh();
+            }));
+
+        section.Children.Add(Slider("Strength", () => _settings.ProgressiveBlur.Strength, v => _settings.ProgressiveBlur.Strength = v, 0, 48, v => $"{v:0}"));
+        section.Children.Add(Slider("Falloff", () => _settings.ProgressiveBlur.Falloff, v => _settings.ProgressiveBlur.Falloff = v, 0.05, 1, FormatPercent));
+        section.Children.Add(Slider("Focus size", () => _settings.ProgressiveBlur.FocusSize, v => _settings.ProgressiveBlur.FocusSize = v, 0.05, 1, FormatPercent));
+
+        if (_settings.ProgressiveBlur.Mode == ProgressiveBlurMode.Directional)
+        {
+            section.Children.Add(Slider("Direction", () => _settings.ProgressiveBlur.DirectionDegrees, v => _settings.ProgressiveBlur.DirectionDegrees = v, -90, 90, v => $"{Math.Round(v):0}°"));
+        }
+
+        section.Children.Add(BuildFocusPad());
+
         section.Children.Add(new TextBlock
         {
-            Text = "Focus blur is applied when you save or export.",
+            Text = "Drag the pad to move the sharp focal area; double-click to center it.",
             FontSize = 11,
             Foreground = Brush("Sd.TextMuted"),
             TextWrapping = TextWrapping.Wrap,
             Margin = new Thickness(0, 4, 0, 0),
         });
         return section;
+    }
+
+    /// "Focus position" header + draggable pad (mac AnnotationFocusPositionPad parity).
+    private UIElement BuildFocusPad()
+    {
+        var stack = new StackPanel { Margin = new Thickness(0, 6, 0, 0) };
+
+        var header = new Grid { Margin = new Thickness(0, 0, 0, 4) };
+        header.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+        var label = new TextBlock
+        {
+            Text = "Focus position",
+            FontSize = 11,
+            FontWeight = FontWeights.Medium,
+            Foreground = Brush("Sd.TextMuted"),
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        var readout = new TextBlock
+        {
+            Text = FocusReadout(),
+            FontSize = 11,
+            Foreground = Brush("Sd.TextMuted"),
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        Grid.SetColumn(label, 0);
+        Grid.SetColumn(readout, 1);
+        header.Children.Add(label);
+        header.Children.Add(readout);
+        stack.Children.Add(header);
+
+        var pad = new FocusPad(_settings.ProgressiveBlur, Apply, () => readout.Text = FocusReadout());
+        stack.Children.Add(pad);
+        return stack;
+    }
+
+    private string FocusReadout()
+    {
+        int x = (int)Math.Round(_settings.ProgressiveBlur.FocusX * 100);
+        int y = (int)Math.Round(_settings.ProgressiveBlur.FocusY * 100);
+        return $"{x}, {y}";
     }
 
     // ---------------------------------------------------------------- border
@@ -878,5 +929,126 @@ internal sealed class BackgroundInspector : UserControl
         content.Children.Add(buttons);
         window.Content = content;
         return window.ShowDialog() == true ? result : null;
+    }
+
+    /// Draggable 2D pad that positions the blur's focal point (mac
+    /// AnnotationFocusPositionPad parity). Renders the focal region (a circle in
+    /// radial mode, a rotated band in directional mode) and a draggable thumb.
+    private sealed class FocusPad : FrameworkElement
+    {
+        private readonly ProgressiveBlurSettings _settings;
+        private readonly Action _apply;
+        private readonly Action _focusTextChanged;
+        private bool _dragging;
+
+        public FocusPad(ProgressiveBlurSettings settings, Action apply, Action focusTextChanged)
+        {
+            _settings = settings;
+            _apply = apply;
+            _focusTextChanged = focusTextChanged;
+            Height = 120;
+            Margin = new Thickness(0, 2, 0, 2);
+            Cursor = Cursors.Hand;
+            Focusable = false;
+        }
+
+        protected override void OnRender(DrawingContext dc)
+        {
+            base.OnRender(dc);
+
+            double w = ActualWidth;
+            double h = ActualHeight;
+            if (w < 4 || h < 4)
+            {
+                return;
+            }
+
+            var accent = ((SolidColorBrush)Application.Current.Resources["Sd.Accent"]).Color;
+
+            dc.DrawRoundedRectangle(
+                new SolidColorBrush(Color.FromRgb(0xF3, 0xF6, 0xF9)),
+                new Pen(new SolidColorBrush(Color.FromRgb(0xD9, 0xDF, 0xE7)), 1),
+                new Rect(0.5, 0.5, w - 1, h - 1), 6, 6);
+
+            var geometry = new ProgressiveBlurGeometry(
+                new RectD(0, 0, w, h), _settings, BlurCoordinateOrigin.TopLeft);
+            var focus = new Point(geometry.Focus.X, geometry.Focus.Y);
+
+            var gridPen = new Pen(new SolidColorBrush(Color.FromArgb(28, 0x20, 0x2A, 0x36)), 1);
+            dc.DrawLine(gridPen, new Point(w / 2, 1), new Point(w / 2, h - 1));
+            dc.DrawLine(gridPen, new Point(1, h / 2), new Point(w - 1, h / 2));
+
+            var regionFill = new SolidColorBrush(Color.FromArgb(30, accent.R, accent.G, accent.B));
+            var regionStroke = new Pen(new SolidColorBrush(Color.FromArgb(96, accent.R, accent.G, accent.B)), 1);
+            if (_settings.Mode == ProgressiveBlurMode.Radial)
+            {
+                double radius = Math.Max(2, geometry.RadialFocusRadius);
+                dc.DrawEllipse(regionFill, regionStroke, focus, radius, radius);
+            }
+            else
+            {
+                double halfWidth = Math.Max(1.5, geometry.DirectionalFocusHalfWidth);
+                double length = Math.Sqrt((w * w) + (h * h));
+                dc.PushTransform(new RotateTransform(_settings.DirectionDegrees, focus.X, focus.Y));
+                dc.DrawRectangle(
+                    regionFill, regionStroke,
+                    new Rect(focus.X - length, focus.Y - halfWidth, length * 2, halfWidth * 2));
+                dc.Pop();
+            }
+
+            double thumbRadius = _dragging ? 6.5 : 5.5;
+            dc.DrawEllipse(
+                new SolidColorBrush(accent),
+                new Pen(new SolidColorBrush(Color.FromArgb(235, 255, 255, 255)), 1.5),
+                focus, thumbRadius, thumbRadius);
+        }
+
+        protected override void OnMouseLeftButtonDown(MouseButtonEventArgs e)
+        {
+            base.OnMouseLeftButtonDown(e);
+            if (e.ClickCount >= 2)
+            {
+                _settings.FocusX = 0.5;
+                _settings.FocusY = 0.5;
+                _apply();
+                _focusTextChanged();
+                InvalidateVisual();
+                return;
+            }
+
+            _dragging = true;
+            CaptureMouse();
+            UpdateFocus(e.GetPosition(this));
+        }
+
+        protected override void OnMouseMove(MouseEventArgs e)
+        {
+            base.OnMouseMove(e);
+            if (_dragging && IsMouseCaptured)
+            {
+                UpdateFocus(e.GetPosition(this));
+            }
+        }
+
+        protected override void OnMouseLeftButtonUp(MouseButtonEventArgs e)
+        {
+            base.OnMouseLeftButtonUp(e);
+            _dragging = false;
+            if (IsMouseCaptured)
+            {
+                ReleaseMouseCapture();
+            }
+
+            InvalidateVisual();
+        }
+
+        private void UpdateFocus(Point position)
+        {
+            _settings.FocusX = Math.Clamp(position.X / Math.Max(ActualWidth, 1), 0, 1);
+            _settings.FocusY = Math.Clamp(position.Y / Math.Max(ActualHeight, 1), 0, 1);
+            _apply();
+            _focusTextChanged();
+            InvalidateVisual();
+        }
     }
 }
