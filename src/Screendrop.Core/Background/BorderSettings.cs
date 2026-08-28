@@ -27,11 +27,34 @@ public static class SwatchLibrary
     };
 }
 
+/// Rendering style for the outer border ring.
+public enum BorderStyle
+{
+    /// Flat, single-color ring.
+    Solid,
+
+    /// Glassmorphism: translucent ring with a top-left→bottom-right brightness
+    /// gradient plus an inner bevel highlight/shadow (thin pane-of-glass look).
+    Glass,
+}
+
+public static class BorderStyleExtensions
+{
+    public static string Title(this BorderStyle style) => style switch
+    {
+        BorderStyle.Solid => "Solid",
+        BorderStyle.Glass => "Glass",
+        _ => style.ToString(),
+    };
+}
+
 /// Outer screenshot border ring. Thickness is a fraction of the screenshot's
 /// shortest edge so presets keep the same visual weight across capture sizes.
 public sealed class BorderSettings : IEquatable<BorderSettings>
 {
     public bool IsEnabled { get; set; }
+
+    public BorderStyle Style { get; set; } = BorderStyle.Solid;
 
     public RgbaColor Color { get; set; } = RgbaColor.White;
 
@@ -54,15 +77,17 @@ public sealed class BorderSettings : IEquatable<BorderSettings>
     public bool Equals(BorderSettings? other) =>
         other is not null
         && IsEnabled == other.IsEnabled
+        && Style == other.Style
         && Color == other.Color
         && Thickness == other.Thickness
         && Opacity == other.Opacity;
 
-    public override int GetHashCode() => HashCode.Combine(IsEnabled, Color, Thickness, Opacity);
+    public override int GetHashCode() => HashCode.Combine(IsEnabled, Style, Color, Thickness, Opacity);
 
     public BorderSettings Clone() => new()
     {
         IsEnabled = IsEnabled,
+        Style = Style,
         Color = Color,
         Thickness = Thickness,
         Opacity = Opacity,
