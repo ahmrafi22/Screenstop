@@ -11,7 +11,7 @@
 ; Output: installer\Output\Screendrop-Setup-<version>.exe
 
 #define MyAppName "Screendrop"
-#define MyAppVersion "1.1.2"
+#define MyAppVersion "1.1.3"
 #define MyAppPublisher "Screendrop"
 #define MyAppExeName "Screendrop.exe"
 #define MyAppURL "https://github.com/ahmrafi22/Screendrop-Windows"
