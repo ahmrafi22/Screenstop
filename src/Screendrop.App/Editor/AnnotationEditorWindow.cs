@@ -686,11 +686,17 @@ internal sealed class AnnotationEditorWindow : Window
     {
         _textAnchor = anchor;
         _textSessionActive = true;
+        // Flatten the camera so the inline text box aligns with the screenshot
+        // (mac disables the camera while a text annotation is being edited).
+        _canvas.SuppressCamera = true;
+        _canvas.InvalidateVisual();
+
         _textBox.Text = string.Empty;
         _textOverlay.Visibility = Visibility.Visible;
         _textBox.Visibility = Visibility.Visible;
-        // The overlay lives in a Grid: position via margin (left/top aligned).
-        _textOverlay.Margin = new Thickness(canvasDip.X, canvasDip.Y, 0, 0);
+        // Position from the anchor (now flat) so the box tracks the image.
+        var pos = _canvas.NormalizedToCanvasDip(anchor);
+        _textOverlay.Margin = new Thickness(pos.X, pos.Y, 0, 0);
         _textBox.Focus();
     }
 
@@ -702,6 +708,7 @@ internal sealed class AnnotationEditorWindow : Window
         }
 
         _textSessionActive = false;
+        _canvas.SuppressCamera = false;
         string text = _textBox.Text;
         _textOverlay.Visibility = Visibility.Collapsed;
         _textBox.Visibility = Visibility.Collapsed;
@@ -711,6 +718,8 @@ internal sealed class AnnotationEditorWindow : Window
         {
             _canvas.AddText(_textAnchor, text);
         }
+
+        _canvas.InvalidateVisual();
     }
 
     private void OnTextBoxKeyDown(object sender, KeyEventArgs e)
