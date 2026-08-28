@@ -334,6 +334,59 @@
                     </Setter.Value>
                 </Setter>
             </Style>
+
+            <!-- Pill slider used inside the inspector (mac parity: label + track in one pill,
+                 value in a second pill, thin track 4px, 12px gray-bordered thumb). -->
+            <Style x:Key="Sd.PillSliderThumb" TargetType="Thumb">
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="Thumb">
+                            <Grid>
+                                <Ellipse Width="12" Height="12" Fill="White" Stroke="#FFC8CAD0" StrokeThickness="1.1">
+                                    <Ellipse.Effect>
+                                        <DropShadowEffect BlurRadius="3" ShadowDepth="1" Direction="270" Opacity="0.18" Color="#FF9AA0A8"/>
+                                    </Ellipse.Effect>
+                                </Ellipse>
+                            </Grid>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+            <Style x:Key="Sd.PillSlider" TargetType="Slider">
+                <Setter Property="Foreground" Value="{StaticResource Sd.Accent}"/>
+                <Setter Property="Background" Value="Transparent"/>
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="Slider">
+                            <Grid VerticalAlignment="Center">
+                                <Track x:Name="PART_Track">
+                                    <Track.DecreaseRepeatButton>
+                                        <RepeatButton Command="Slider.DecreaseLarge">
+                                            <RepeatButton.Template>
+                                                <ControlTemplate TargetType="RepeatButton">
+                                                    <Border Height="4" CornerRadius="2" Background="{StaticResource Sd.Accent}"/>
+                                                </ControlTemplate>
+                                            </RepeatButton.Template>
+                                        </RepeatButton>
+                                    </Track.DecreaseRepeatButton>
+                                    <Track.IncreaseRepeatButton>
+                                        <RepeatButton Command="Slider.IncreaseLarge">
+                                            <RepeatButton.Template>
+                                                <ControlTemplate TargetType="RepeatButton">
+                                                    <Border Height="4" CornerRadius="2" Background="#FFE0E0E2"/>
+                                                </ControlTemplate>
+                                            </RepeatButton.Template>
+                                        </RepeatButton>
+                                    </Track.IncreaseRepeatButton>
+                                    <Track.Thumb>
+                                        <Thumb Style="{StaticResource Sd.PillSliderThumb}"/>
+                                    </Track.Thumb>
+                                </Track>
+                            </Grid>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
         </ResourceDictionary>
     </Application.Resources>
 </Application>
