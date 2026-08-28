@@ -448,9 +448,10 @@ internal sealed class AnnotationCanvas : SKElement
         var frameGeometry = new FrameGeometry(imageFrame, cardFrame, bg);
         bool castsShadow = bg.IsEnabled || cameraLive;
 
-        bool liveBlur = bg.ProgressiveBlur.IsActive
-            && bg.ProgressiveBlur.EdgeMode == ProgressiveBlurEdgeMode.Clipped
-            && !IsCropping;
+        // Live focus-blur feedback in both edge modes: the screenshot is blurred
+        // with the sharp focal area so the focus pad responds visibly. (Bleed
+        // mode's full-scene blur, including the background, stays export-exact.)
+        bool liveBlur = bg.ProgressiveBlur.IsActive && !IsCropping;
         var baseImage = liveBlur
             ? EnsureBlurredPreview(bg.ProgressiveBlur) ?? _previewImage
             : _previewImage;
