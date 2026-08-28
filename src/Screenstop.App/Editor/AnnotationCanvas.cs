@@ -1,6 +1,7 @@
 using System.Windows;
 using System.Windows.Input;
 using Screenstop.Core.Annotations;
+using Screenstop.Core.Background;
 using Screenstop.Core.Geometry;
 using Screenstop.Rendering;
 using SkiaSharp;
@@ -110,6 +111,26 @@ internal sealed class AnnotationCanvas : SKElement
 
     /// Redaction strength applied to new pixelate/blur annotations (mac inspector default 23%).
     public double ActiveDensity { get; set; } = 0.23;
+
+    /// Mockup stage settings rendered live behind the screenshot. Camera
+    /// projection, scene blur, and watermark are applied at export time; the
+    /// canvas previews fill, padding-less fit, corners, shadow, and border.
+    public BackgroundSettings? Background { get; private set; }
+
+    public void SetBackground(BackgroundSettings? settings)
+    {
+        Background = settings;
+        InvalidateVisual();
+    }
+
+    /// Builds the save/export document, carrying the mockup stage settings along
+    /// with the annotations so a re-opened file resumes with its background.
+    public AnnotationDocument ToDocument()
+    {
+        var document = Model.ToDocument();
+        document.Background = Background?.Clone();
+        return document;
+    }
 
     /// Raised when the active tool changes (sidebar refresh hook).
     public event Action? ToolChanged;
@@ -280,7 +301,6 @@ internal sealed class AnnotationCanvas : SKElement
         }
 
         canvas.Translate((float)_viewport.OffsetX, (float)_viewport.OffsetY);
-        canvas.DrawImage(_previewImage, 0, 0);
 
         var annotations = new List<Annotation>(Model.Annotations);
         if (_draft is not null)
@@ -288,7 +308,27 @@ internal sealed class AnnotationCanvas : SKElement
             annotations.Add(_draft);
         }
 
-        AnnotationRenderer.Draw(canvas, _previewImage, annotations, _previewWidth, _previewHeight);
+        if (Background is { HasRenderableContent: true } bg)
+        {
+            // The stage fills the whole canvas behind the fitted screenshot.
+            var canvasRect = new RectD(-_viewport.OffsetX, -_viewport.OffsetY, canvasW, canvasH);
+            var imageRect = new RectD(0, 0, _viewport.DisplayWidth, _viewport.DisplayHeight);
+            var contentSize = new SizeD(_fullBitmap.Width, _fullBitmap.Height);
+
+            BackgroundRenderer.DrawLiveBackdrop(canvas, bg, canvasRect, imageRect, contentSize);
+
+            canvas.Save();
+            BackgroundRenderer.ClipLiveImage(canvas, bg, imageRect);
+            canvas.DrawImage(_previewImage, 0, 0);
+            AnnotationRenderer.Draw(canvas, _previewImage, annotations, _previewWidth, _previewHeight);
+            canvas.Restore();
+        }
+        else
+        {
+            canvas.DrawImage(_previewImage, 0, 0);
+            AnnotationRenderer.Draw(canvas, _previewImage, annotations, _previewWidth, _previewHeight);
+        }
+
         DrawCropOverlay(canvas);
         DrawSelection(canvas);
     }

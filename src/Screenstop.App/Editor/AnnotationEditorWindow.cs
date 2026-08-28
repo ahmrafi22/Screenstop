@@ -70,7 +70,9 @@ internal sealed class AnnotationEditorWindow : Window
         else
         {
             // Non-destructive: resume any previous edits stored in the sidecar.
-            _canvas.Model.Load(AnnotationDocument.Load(imagePath));
+            var document = AnnotationDocument.Load(imagePath);
+            _canvas.Model.Load(document);
+            _canvas.SetBackground(document?.Background?.Clone());
         }
 
         _undoButton = MakeIconButton(UiGlyph.Undo, "Undo (Ctrl+Z)", (_, _) => { CommitTextSession(); _canvas.Model.Undo(); });
@@ -168,9 +170,11 @@ internal sealed class AnnotationEditorWindow : Window
         _sidebar = new EditorSidebar(_canvas, new AnnotationPresetStore());
         _sidebar.ToolPicked += ActivateTool;
 
+        var inspectorPanel = BuildInspectorPanel();
+
         var body = new DockPanel { LastChildFill = true };
-        DockPanel.SetDock(_sidebar, Dock.Right);
-        body.Children.Add(_sidebar);
+        DockPanel.SetDock(inspectorPanel, Dock.Right);
+        body.Children.Add(inspectorPanel);
         body.Children.Add(_canvasHost);
 
         var root = new DockPanel();
@@ -184,6 +188,31 @@ internal sealed class AnnotationEditorWindow : Window
 
         KeyDown += OnWindowKeyDown;
         Closed += (_, _) => _canvas.ReleaseResources();
+    }
+
+    /// Right-hand inspector: an Annotate tab (tools/styles) and a Background
+    /// tab (mockup stage presets + settings), mac inspector parity.
+    private UIElement BuildInspectorPanel()
+    {
+        var tabStyle = (Style)FindAppResource("Sd.TabItem");
+
+        var backgroundInspector = new BackgroundInspector(_canvas);
+        var backgroundScroll = new ScrollViewer
+        {
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+            Padding = new Thickness(12, 14, 12, 18),
+            Content = backgroundInspector,
+        };
+
+        var tabs = new TabControl
+        {
+            Width = 300,
+            Padding = new Thickness(6, 8, 0, 0),
+        };
+        tabs.Items.Add(new TabItem { Header = "Annotate", Content = _sidebar, Style = tabStyle });
+        tabs.Items.Add(new TabItem { Header = "Background", Content = backgroundScroll, Style = tabStyle });
+        return tabs;
     }
 
     private void OnStartCrop(object sender, RoutedEventArgs e)
@@ -442,7 +471,7 @@ internal sealed class AnnotationEditorWindow : Window
 
         try
         {
-            _canvas.Model.ToDocument().Save(_sourcePath);
+            _canvas.ToDocument().Save(_sourcePath);
             Saved?.Invoke(_sourcePath);
             Close();
         }
@@ -483,7 +512,7 @@ internal sealed class AnnotationEditorWindow : Window
 
             // Keep the edits with the export too, so re-opening it resumes
             // where the user left off.
-            _canvas.Model.ToDocument().Save(dialog.FileName);
+            _canvas.ToDocument().Save(dialog.FileName);
 
             Saved?.Invoke(dialog.FileName);
             Close();
@@ -496,7 +525,7 @@ internal sealed class AnnotationEditorWindow : Window
 
     private byte[] EncodePng()
     {
-        using var composited = AnnotationRenderer.Render(_canvas.FullBitmap!, _canvas.Model.ToDocument());
+        using var composited = AnnotationRenderer.Render(_canvas.FullBitmap!, _canvas.ToDocument());
         using var data = composited.Encode(SKEncodedImageFormat.Png, 100);
         using var stream = new MemoryStream();
         data.SaveTo(stream);
