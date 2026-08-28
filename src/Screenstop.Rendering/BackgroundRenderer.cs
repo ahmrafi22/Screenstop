@@ -122,6 +122,26 @@ public static class BackgroundRenderer
             antialias: true);
     }
 
+    /// Draws only the stage fill (solid/gradient/wallpaper) across a rect.
+    public static void DrawStageFill(SKCanvas canvas, BackgroundStyle style, RectD rect) =>
+        DrawBackground(canvas, style, rect);
+
+    /// Draws the shadow + outer border card for the screenshot frame. Used by
+    /// the live canvas inside the camera projection transform.
+    public static void DrawCardBacking(
+        SKCanvas canvas, BackgroundSettings settings, FrameGeometry geometry, bool castsShadow) =>
+        DrawFrameBacking(canvas, settings, geometry, castsShadow);
+
+    /// Draws the tiled watermark overlay across a rect (flat, not projected).
+    public static void DrawWatermarkOverlay(SKCanvas canvas, WatermarkSettings settings, RectD rect) =>
+        DrawWatermark(canvas, settings, rect);
+
+    /// Builds the SkiaSharp matrix for a camera homography (row-major).
+    public static SKMatrix ToSKMatrix(Homography h) => new(
+        (float)h.A, (float)h.B, (float)h.C,
+        (float)h.D, (float)h.E, (float)h.F,
+        (float)h.G, (float)h.H, (float)h.I);
+
     private static void DrawBackground(SKCanvas canvas, BackgroundStyle style, RectD rect)
     {
         switch (style.Kind)

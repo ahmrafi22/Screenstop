@@ -3,7 +3,7 @@ using SkiaSharp;
 
 namespace Screenstop.Rendering;
 
-internal static class SkiaGeometry
+public static class SkiaGeometry
 {
     public static SKRect ToSK(this RectD rect) =>
         new((float)rect.X, (float)rect.Y, (float)rect.MaxX, (float)rect.MaxY);
