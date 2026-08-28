@@ -169,7 +169,8 @@ internal sealed class AnnotationCanvas : SKElement
     {
         Background = settings;
         _layoutFull = null;
-        _viewport.Reset();
+        // Keep the user's zoom/pan so dragging camera or layout sliders does not
+        // snap the view back to fit on every tick; the stage refits around it.
         InvalidateVisual();
     }
 
