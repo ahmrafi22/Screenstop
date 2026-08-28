@@ -1,4 +1,6 @@
 using Screenstop.Core.Background;
+using Screenstop.Rendering;
+using SkiaSharp;
 using Xunit;
 
 namespace Screenstop.Core.Tests;
@@ -330,5 +332,66 @@ public class BackgroundModelTests
         Assert.NotNull(preset);
         Assert.Equal("aurora", preset!.Background.Style.GradientId);
         Assert.Equal(0.15, preset.Background.Padding);
+    }
+
+    // ------------------------------------------------------------ glass border
+
+    [Fact]
+    public void Glass_border_renders_directional_gradient_ring()
+    {
+        using var content = GlassSolidContent(400, 300);
+        var settings = new BackgroundSettings
+        {
+            Style = BackgroundStyle.Solid("black"),
+            Padding = 0.14,
+            Border = new BorderSettings
+            {
+                IsEnabled = true,
+                Style = BorderStyle.Glass,
+                Color = RgbaColor.White,
+                Thickness = 0.03,
+                Opacity = 0.5,
+            },
+        };
+
+        using var result = BackgroundRenderer.Compose(content, settings);
+        var layout = BackgroundLayout.Make(new SizeD(400, 300), settings);
+        double borderWidth = settings.Border.PixelThickness(400, 300);
+        var image = layout.ImageRect;
+
+        int midX = (int)image.MidX;
+        var topRing = result.GetPixel(midX, (int)(image.MinY - borderWidth / 2));
+        var bottomRing = result.GetPixel(midX, (int)(image.MaxY + borderWidth / 2));
+
+        Assert.True(topRing.Red > 60, $"top ring too dark: {topRing}");
+        Assert.True(Math.Abs(topRing.Red - topRing.Blue) < 22, $"glass ring should be neutral: {topRing}");
+        Assert.True(topRing.Red > bottomRing.Red, $"expected top {topRing} brighter than bottom {bottomRing}");
+    }
+
+    [Fact]
+    public void Glass_border_style_survives_clone_and_equality()
+    {
+        var border = new BorderSettings
+        {
+            IsEnabled = true,
+            Style = BorderStyle.Glass,
+            Thickness = 0.006,
+            Opacity = 0.5,
+        };
+
+        var clone = border.Clone();
+        Assert.Equal(border, clone);
+        Assert.Equal(BorderStyle.Glass, clone.Style);
+
+        clone.Style = BorderStyle.Solid;
+        Assert.NotEqual(border, clone);
+    }
+
+    private static SKBitmap GlassSolidContent(int width, int height)
+    {
+        var bitmap = new SKBitmap(new SKImageInfo(width, height, SKColorType.Bgra8888, SKAlphaType.Opaque));
+        using var canvas = new SKCanvas(bitmap);
+        canvas.Clear(new SKColor(90, 120, 200));
+        return bitmap;
     }
 }

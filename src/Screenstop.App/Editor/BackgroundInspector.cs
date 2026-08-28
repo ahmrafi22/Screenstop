@@ -611,6 +611,37 @@ internal sealed class BackgroundInspector : UserControl
         enable.Unchecked += (_, _) => { _settings.Border.IsEnabled = false; Apply(); Refresh(); };
         section.Children.Add(enable);
 
+        section.Children.Add(Picker("Style",
+            Enum.GetValues<BorderStyle>().Select(s => s.Title()).ToArray(),
+            (int)_settings.Border.Style,
+            index =>
+            {
+                _settings.Border.Style = (BorderStyle)index;
+                Apply();
+                Refresh();
+            }));
+
+        var glass = new Button
+        {
+            Content = "Glassmorphism preset",
+            Style = (Style)Application.Current.Resources["Sd.Button"],
+            Padding = new Thickness(10, 3, 10, 3),
+            Margin = new Thickness(0, 0, 0, 6),
+            FontSize = 11,
+        };
+        glass.Click += (_, _) =>
+        {
+            _settings.Border.IsEnabled = true;
+            _settings.Border.Style = BorderStyle.Glass;
+            _settings.Border.Color = RgbaColor.White;
+            _settings.Border.Thickness = 0.006;
+            _settings.Border.Opacity = 0.5;
+            _settings.Shadow = 0.5;
+            Apply();
+            Refresh();
+        };
+        section.Children.Add(glass);
+
         section.Children.Add(Slider("Thickness", () => _settings.Border.Thickness, v => _settings.Border.Thickness = v, 0, 0.06, FormatPercent));
         section.Children.Add(Slider("Opacity", () => _settings.Border.Opacity, v => _settings.Border.Opacity = v, 0, 1, FormatPercent));
 
