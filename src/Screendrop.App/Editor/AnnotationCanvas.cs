@@ -34,6 +34,49 @@ internal sealed class AnnotationCanvas : SKElement
     private double _ratioX = 1;
     private double _ratioY = 1;
 
+    // Mockup-stage display state. When a background is active the viewport fits
+    // the whole stage (image + padding) instead of just the image, and the
+    // camera projection maps the flat stage onto a perspective quad. Pointer
+    // input is unprojected back to flat image space (mac AnnotationCanvas parity).
+    private BackgroundLayout? _layoutFull;
+    private bool _stageActive;
+
+    /// Computes the current stage display frames + camera projection from the
+    /// live viewport/state. Used by both the paint loop and pointer mapping so
+    /// they always agree (even while the camera is suppressed for crop/text).
+    private bool TryGetStageFrames(
+        out double scale,
+        out RectD canvasFrame,
+        out RectD imageFrame,
+        out RectD cardFrame,
+        out CameraProjection projection,
+        out bool cameraLive)
+    {
+        scale = 0;
+        canvasFrame = default;
+        imageFrame = default;
+        cardFrame = default;
+        projection = CameraProjection.Create(default, new CameraQuad(default, default, default, default));
+        cameraLive = false;
+
+        if (!_stageActive || _layoutFull is null || Background is null
+            || _viewport.DisplayWidth <= 0 || _layoutFull.CanvasSize.Width <= 0)
+        {
+            return false;
+        }
+
+        scale = _viewport.DisplayWidth / _layoutFull.CanvasSize.Width;
+        canvasFrame = new RectD(0, 0, _viewport.DisplayWidth, _viewport.DisplayHeight);
+        imageFrame = ScaleRect(_layoutFull.ImageRect, scale);
+        cardFrame = ScaleRect(_layoutFull.CardRect, scale);
+
+        var camera = IsCropping || SuppressCamera ? new CameraSettings() : Background.Camera;
+        projection = CameraGeometry.Projection(
+            canvasFrame, imageFrame, new SizeD(canvasFrame.Width, canvasFrame.Height), camera);
+        cameraLive = camera.HasEffect;
+        return true;
+    }
+
     private DragMode _mode;
     private Annotation? _draft;
     private NormalizedPoint _dragStart;
@@ -91,6 +134,7 @@ internal sealed class AnnotationCanvas : SKElement
         Model.Load(global::Screendrop.Rendering.Crop.TransformDocument(document, rect, oldWidth, oldHeight));
         _previewImage?.Dispose();
         _previewImage = null;
+        _layoutFull = null;
         _viewport.Reset();
         InvalidateVisual();
     }
@@ -117,9 +161,15 @@ internal sealed class AnnotationCanvas : SKElement
     /// canvas previews fill, padding-less fit, corners, shadow, and border.
     public BackgroundSettings? Background { get; private set; }
 
+    /// Temporarily flattens the camera (mac disables it while cropping or
+    /// editing text so the flat overlay stays aligned). Set by the editor window.
+    public bool SuppressCamera { get; set; }
+
     public void SetBackground(BackgroundSettings? settings)
     {
         Background = settings;
+        _layoutFull = null;
+        _viewport.Reset();
         InvalidateVisual();
     }
 
@@ -164,6 +214,7 @@ internal sealed class AnnotationCanvas : SKElement
             _fullBitmap = bitmap;
             _previewImage?.Dispose();
             _previewImage = null;
+            _layoutFull = null;
             _viewport.Reset();
             InvalidateVisual();
             return true;
@@ -289,18 +340,55 @@ internal sealed class AnnotationCanvas : SKElement
         }
 
         UpdateDpiRatio(canvasW, canvasH);
+
+        _stageActive = Background is { HasRenderableContent: true };
+        if (_stageActive)
+        {
+            EnsureLayoutFull();
+            if (_layoutFull is null || _layoutFull.CanvasSize.Width <= 0 || _layoutFull.CanvasSize.Height <= 0)
+            {
+                _stageActive = false;
+            }
+        }
+
+        if (_stageActive && _layoutFull is not null)
+        {
+            _viewport.ImageWidth = _layoutFull.CanvasSize.Width;
+            _viewport.ImageHeight = _layoutFull.CanvasSize.Height;
+        }
+        else
+        {
+            _viewport.ImageWidth = _fullBitmap.Width;
+            _viewport.ImageHeight = _fullBitmap.Height;
+        }
+
         _viewport.CanvasWidth = canvasW;
         _viewport.CanvasHeight = canvasH;
-        _viewport.ImageWidth = _fullBitmap.Width;
-        _viewport.ImageHeight = _fullBitmap.Height;
         _viewport.Recompute();
-        EnsurePreviewImage();
+
+        if (_stageActive && _layoutFull is not null)
+        {
+            PaintStage(canvas, Background!);
+        }
+        else
+        {
+            PaintPlain(canvas);
+        }
+    }
+
+    /// Legacy path: the image fills the viewport, no mockup stage.
+    private void PaintPlain(SKCanvas canvas)
+    {
+        EnsurePreviewImage(
+            Math.Max(1, (int)Math.Round(_viewport.DisplayWidth)),
+            Math.Max(1, (int)Math.Round(_viewport.DisplayHeight)));
         if (_previewImage is null)
         {
             return;
         }
 
         canvas.Translate((float)_viewport.OffsetX, (float)_viewport.OffsetY);
+        canvas.DrawImage(_previewImage, 0, 0);
 
         var annotations = new List<Annotation>(Model.Annotations);
         if (_draft is not null)
@@ -308,30 +396,89 @@ internal sealed class AnnotationCanvas : SKElement
             annotations.Add(_draft);
         }
 
-        if (Background is { HasRenderableContent: true } bg)
-        {
-            // The stage fills the whole canvas behind the fitted screenshot.
-            var canvasRect = new RectD(-_viewport.OffsetX, -_viewport.OffsetY, canvasW, canvasH);
-            var imageRect = new RectD(0, 0, _viewport.DisplayWidth, _viewport.DisplayHeight);
-            var contentSize = new SizeD(_fullBitmap.Width, _fullBitmap.Height);
+        AnnotationRenderer.Draw(canvas, _previewImage, annotations, _previewWidth, _previewHeight);
 
-            BackgroundRenderer.DrawLiveBackdrop(canvas, bg, canvasRect, imageRect, contentSize);
-
-            canvas.Save();
-            BackgroundRenderer.ClipLiveImage(canvas, bg, imageRect);
-            canvas.DrawImage(_previewImage, 0, 0);
-            AnnotationRenderer.Draw(canvas, _previewImage, annotations, _previewWidth, _previewHeight);
-            canvas.Restore();
-        }
-        else
-        {
-            canvas.DrawImage(_previewImage, 0, 0);
-            AnnotationRenderer.Draw(canvas, _previewImage, annotations, _previewWidth, _previewHeight);
-        }
-
-        DrawCropOverlay(canvas);
-        DrawSelection(canvas);
+        var imageFrame = new RectD(0, 0, _viewport.DisplayWidth, _viewport.DisplayHeight);
+        DrawCropOverlay(canvas, imageFrame);
+        DrawSelection(canvas, imageFrame);
     }
+
+    /// Mockup-stage path: fits the stage (image + padding), fills the background,
+    /// and projects the card (image + annotations) through the camera. Pointer
+    /// input is unprojected in ToNorm so editing stays aligned (mac parity).
+    private void PaintStage(SKCanvas canvas, BackgroundSettings bg)
+    {
+        if (!TryGetStageFrames(out _, out var canvasFrame, out var imageFrame, out var cardFrame, out var projection, out bool cameraLive))
+        {
+            return;
+        }
+
+        EnsurePreviewImage(
+            Math.Max(1, (int)Math.Round(imageFrame.Width)),
+            Math.Max(1, (int)Math.Round(imageFrame.Height)));
+        if (_previewImage is null)
+        {
+            return;
+        }
+
+        canvas.Translate((float)_viewport.OffsetX, (float)_viewport.OffsetY);
+
+        if (bg.IsEnabled)
+        {
+            BackgroundRenderer.DrawStageFill(canvas, bg.Style, canvasFrame);
+        }
+
+        var frameGeometry = new FrameGeometry(imageFrame, cardFrame, bg);
+        bool castsShadow = bg.IsEnabled || cameraLive;
+
+        var matrix = BackgroundRenderer.ToSKMatrix(projection.Forward);
+        canvas.Save();
+        canvas.Concat(ref matrix);
+
+        BackgroundRenderer.DrawCardBacking(canvas, bg, frameGeometry, castsShadow);
+
+        canvas.Save();
+        canvas.ClipPath(SkiaGeometry.PerCornerPath(imageFrame, frameGeometry.ImageCornerRadii), antialias: true);
+        canvas.Translate((float)imageFrame.X, (float)imageFrame.Y);
+        canvas.DrawImage(_previewImage, 0, 0);
+
+        var annotations = new List<Annotation>(Model.Annotations);
+        if (_draft is not null)
+        {
+            annotations.Add(_draft);
+        }
+
+        AnnotationRenderer.Draw(canvas, _previewImage, annotations, _previewWidth, _previewHeight);
+        canvas.Restore();
+
+        if (!IsCropping)
+        {
+            DrawSelection(canvas, imageFrame);
+        }
+
+        canvas.Restore();
+
+        if (bg.Watermark.IsVisible)
+        {
+            BackgroundRenderer.DrawWatermarkOverlay(canvas, bg.Watermark, canvasFrame);
+        }
+
+        DrawCropOverlay(canvas, imageFrame);
+    }
+
+    private void EnsureLayoutFull()
+    {
+        if (_layoutFull is not null || _fullBitmap is null || Background is null)
+        {
+            return;
+        }
+
+        _layoutFull = BackgroundLayout.Make(
+            new SizeD(_fullBitmap.Width, _fullBitmap.Height), Background);
+    }
+
+    private static RectD ScaleRect(RectD rect, double scale) => new(
+        rect.X * scale, rect.Y * scale, rect.Width * scale, rect.Height * scale);
 
     protected override void OnMouseLeftButtonDown(MouseButtonEventArgs e)
     {
@@ -782,28 +929,26 @@ internal sealed class AnnotationCanvas : SKElement
         }
     }
 
-    private void DrawCropOverlay(SKCanvas canvas)
+    private static SKRect ToPixelRect(NormalizedRect r, RectD frame) => new(
+        (float)(frame.X + r.X * frame.Width),
+        (float)(frame.Y + r.Y * frame.Height),
+        (float)(frame.X + r.Right * frame.Width),
+        (float)(frame.Y + r.Bottom * frame.Height));
+
+    private void DrawCropOverlay(SKCanvas canvas, RectD imageFrame)
     {
         if (!IsCropping)
         {
             return;
         }
 
-        if (_viewport.DisplayWidth <= 0 || _viewport.DisplayHeight <= 0)
+        if (imageFrame.Width <= 0 || imageFrame.Height <= 0)
         {
             return;
         }
 
-        double dispW = _viewport.DisplayWidth;
-        double dispH = _viewport.DisplayHeight;
-
         var cropRect = _cropDraft ?? new NormalizedRect(0, 0, 1, 1);
-
-        var rect = new SKRect(
-            (float)(cropRect.X * dispW),
-            (float)(cropRect.Y * dispH),
-            (float)(cropRect.Right * dispW),
-            (float)(cropRect.Bottom * dispH));
+        var rect = ToPixelRect(cropRect, imageFrame);
 
         // Dim everything outside the selection.
         using var dimPaint = new SKPaint
@@ -811,7 +956,7 @@ internal sealed class AnnotationCanvas : SKElement
             Color = new SKColor(0, 0, 0, 140),
         };
         using var full = new SKPath { FillType = SKPathFillType.EvenOdd };
-        full.AddRect(new SKRect(0, 0, (float)dispW, (float)dispH));
+        full.AddRect(new SKRect((float)imageFrame.X, (float)imageFrame.Y, (float)imageFrame.MaxX, (float)imageFrame.MaxY));
         full.AddRect(rect);
         canvas.DrawPath(full, dimPaint);
 
@@ -844,23 +989,16 @@ internal sealed class AnnotationCanvas : SKElement
         }
     }
 
-    private void DrawSelection(SKCanvas canvas)
+    private void DrawSelection(SKCanvas canvas, RectD imageFrame)
     {
         var selected = Model.Selected;
-        if (selected is null || _viewport.DisplayWidth <= 0 || _viewport.DisplayHeight <= 0)
+        if (selected is null || imageFrame.Width <= 0 || imageFrame.Height <= 0)
         {
             return;
         }
 
-        double dispW = _viewport.DisplayWidth;
-        double dispH = _viewport.DisplayHeight;
-
         var bounds = selected.Bounds();
-        var rect = new SKRect(
-            (float)(bounds.X * dispW),
-            (float)(bounds.Y * dispH),
-            (float)(bounds.Right * dispW),
-            (float)(bounds.Bottom * dispH));
+        var rect = ToPixelRect(bounds, imageFrame);
 
         using var dashPaint = new SKPaint
         {
@@ -891,8 +1029,10 @@ internal sealed class AnnotationCanvas : SKElement
         {
             foreach (var p in new[] { selected.Start, selected.End })
             {
-                canvas.DrawCircle((float)(p.X * dispW), (float)(p.Y * dispH), (float)HandleSizePx / 2, handlePaint);
-                canvas.DrawCircle((float)(p.X * dispW), (float)(p.Y * dispH), (float)HandleSizePx / 2, handleBorder);
+                float cx = (float)(imageFrame.X + p.X * imageFrame.Width);
+                float cy = (float)(imageFrame.Y + p.Y * imageFrame.Height);
+                canvas.DrawCircle(cx, cy, (float)HandleSizePx / 2, handlePaint);
+                canvas.DrawCircle(cx, cy, (float)HandleSizePx / 2, handleBorder);
             }
         }
         else
@@ -915,17 +1055,13 @@ internal sealed class AnnotationCanvas : SKElement
     /// Builds (or rebuilds) the display-resolution image the annotations are
     /// composited against. Pixelate/blur sample from this image, so it must
     /// match the coordinate space passed to AnnotationRenderer.Draw.
-    private void EnsurePreviewImage()
+    private void EnsurePreviewImage(int targetW, int targetH)
     {
-        double dispW = _viewport.DisplayWidth;
-        double dispH = _viewport.DisplayHeight;
-        if (_fullBitmap is null || dispW < 1 || dispH < 1)
+        if (_fullBitmap is null || targetW < 1 || targetH < 1)
         {
             return;
         }
 
-        int targetW = Math.Max(1, (int)Math.Round(dispW));
-        int targetH = Math.Max(1, (int)Math.Round(dispH));
         if (_previewImage is not null && _previewWidth == targetW && _previewHeight == targetH)
         {
             return;
@@ -963,12 +1099,30 @@ internal sealed class AnnotationCanvas : SKElement
 
     private Point ToCanvasPx(NormalizedPoint n)
     {
+        if (TryGetStageFrames(out _, out _, out var imageFrame, out _, out var projection, out bool cameraLive))
+        {
+            var flat = new PointD(
+                imageFrame.X + n.X * imageFrame.Width,
+                imageFrame.Y + n.Y * imageFrame.Height);
+            var mapped = cameraLive ? projection.Project(flat) : flat;
+            return new Point(_viewport.OffsetX + mapped.X, _viewport.OffsetY + mapped.Y);
+        }
+
         var (x, y) = _viewport.ToCanvas(n.X, n.Y);
         return new Point(x, y);
     }
 
     private NormalizedPoint ToNorm(Point canvasPx)
     {
+        if (TryGetStageFrames(out _, out _, out var imageFrame, out _, out var projection, out bool cameraLive))
+        {
+            var local = new PointD(canvasPx.X - _viewport.OffsetX, canvasPx.Y - _viewport.OffsetY);
+            var flat = cameraLive ? projection.Unproject(local) : local;
+            double nx = (flat.X - imageFrame.X) / imageFrame.Width;
+            double ny = (flat.Y - imageFrame.Y) / imageFrame.Height;
+            return new NormalizedPoint(Math.Clamp(nx, 0, 1), Math.Clamp(ny, 0, 1));
+        }
+
         var (x, y) = _viewport.ToNormalized(canvasPx.X, canvasPx.Y);
         return new NormalizedPoint(x, y);
     }
@@ -976,7 +1130,17 @@ internal sealed class AnnotationCanvas : SKElement
     /// Converts a canvas-pixel distance to normalized units (for tolerances).
     private double PxToNorm(double px)
     {
-        if (_viewport.DisplayWidth <= 0 || _fullBitmap is null)
+        if (_fullBitmap is null)
+        {
+            return 0.01;
+        }
+
+        if (TryGetStageFrames(out _, out _, out var imageFrame, out _, out _, out _))
+        {
+            return (px * _ratioX) / Math.Max(imageFrame.Width, imageFrame.Height);
+        }
+
+        if (_viewport.DisplayWidth <= 0)
         {
             return 0.01;
         }
