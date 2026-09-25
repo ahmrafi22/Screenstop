@@ -2,6 +2,7 @@
 <Application x:Class="Screendrop.App.App"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:controls="clr-namespace:Screendrop.App.Controls"
              ShutdownMode="OnExplicitShutdown">
     <Application.Resources>
         <ResourceDictionary>
@@ -23,8 +24,92 @@
             <SolidColorBrush x:Key="Sd.AccentPressed" Color="#FF1557C9"/>
             <SolidColorBrush x:Key="Sd.AccentSoft" Color="#FFE5EEFF"/>
 
+            <!-- ===== Inspector field tokens =====
+                 iOS inspector chrome (AnnotationInspectorStyle.swift) and TExP's
+                 dialkit theme both derive every input surface from the ink color
+                 at 3.5-9% and a hairline stroke, so fields read as one family. -->
+            <SolidColorBrush x:Key="Sd.FieldFill" Color="#FFF2F2F4"/>
+            <SolidColorBrush x:Key="Sd.FieldHover" Color="#FFE9E9EE"/>
+            <SolidColorBrush x:Key="Sd.SelectionFill" Color="#FFE9E9EB"/>
+            <SolidColorBrush x:Key="Sd.Groove" Color="#FFFAFAFC"/>
+            <SolidColorBrush x:Key="Sd.SectionText" Color="#FF3A3A40"/>
+            <SolidColorBrush x:Key="Sd.Danger" Color="#FFD13438"/>
+            <SolidColorBrush x:Key="Sd.DangerSoft" Color="#FFFDECEC"/>
+
+            <!-- Numeric readouts use a tabular mono face so digits never shift
+                 width as values change (TExP pairs a JetBrains Mono readout
+                 with tabular-nums). -->
+            <FontFamily x:Key="Sd.MonoFont">Consolas, Cascadia Mono, Courier New</FontFamily>
+
             <CornerRadius x:Key="Sd.Radius">8</CornerRadius>
+            <CornerRadius x:Key="Sd.FieldRadius">8</CornerRadius>
             <Thickness x:Key="Sd.ButtonPadding">10,5,10,5</Thickness>
+
+            <!-- ===== Field templates ===== -->
+
+            <!-- Bare text surface: the surrounding pill supplies the chrome, so
+                 the editor contributes only its own caret and selection. -->
+            <ControlTemplate x:Key="Sd.FlatTextBox" TargetType="TextBox">
+                <Grid>
+                    <TextBlock x:Name="PlaceholderText"
+                               Margin="{TemplateBinding Padding}"
+                               VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
+                               Foreground="{StaticResource Sd.TextMuted}"
+                               FontSize="{TemplateBinding FontSize}"
+                               IsHitTestVisible="False"/>
+                    <ScrollViewer x:Name="PART_ContentHost"
+                                  Margin="{TemplateBinding Padding}"
+                                  VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
+                                  HorizontalScrollBarVisibility="Hidden"
+                                  VerticalScrollBarVisibility="Hidden"
+                                  Focusable="False"/>
+                </Grid>
+            </ControlTemplate>
+
+            <!-- Standard field: hairline rounded box that grows a 2px accent
+                 ring on focus, so keyboard focus is unmistakable. -->
+            <ControlTemplate x:Key="Sd.FieldTextBox" TargetType="TextBox">
+                <Border x:Name="Ring"
+                        Background="Transparent"
+                        BorderBrush="Transparent"
+                        BorderThickness="1"
+                        CornerRadius="9"
+                        SnapsToDevicePixels="True">
+                    <Border x:Name="Field"
+                            Background="{TemplateBinding Background}"
+                            BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}"
+                            CornerRadius="8"
+                            SnapsToDevicePixels="True">
+                        <Grid>
+                            <TextBlock x:Name="PlaceholderText"
+                                       Margin="{TemplateBinding Padding}"
+                                       VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
+                                       Foreground="{StaticResource Sd.TextMuted}"
+                                       FontSize="{TemplateBinding FontSize}"
+                                       IsHitTestVisible="False"/>
+                            <ScrollViewer x:Name="PART_ContentHost"
+                                          Margin="{TemplateBinding Padding}"
+                                          VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
+                                          HorizontalScrollBarVisibility="Hidden"
+                                          VerticalScrollBarVisibility="Hidden"
+                                          Focusable="False"/>
+                        </Grid>
+                    </Border>
+                </Border>
+                <ControlTemplate.Triggers>
+                    <Trigger Property="IsMouseOver" Value="True">
+                        <Setter TargetName="Field" Property="Background" Value="{StaticResource Sd.FieldHover}"/>
+                    </Trigger>
+                    <Trigger Property="IsKeyboardFocusWithin" Value="True">
+                        <Setter TargetName="Ring" Property="BorderBrush" Value="{StaticResource Sd.Accent}"/>
+                        <Setter TargetName="Field" Property="BorderBrush" Value="{StaticResource Sd.Accent}"/>
+                    </Trigger>
+                    <Trigger Property="IsEnabled" Value="False">
+                        <Setter TargetName="Field" Property="Opacity" Value="0.45"/>
+                    </Trigger>
+                </ControlTemplate.Triggers>
+            </ControlTemplate>
 
             <!-- Base chrome shared by every button/toggle template -->
             <ControlTemplate x:Key="Sd.ChromeButton" TargetType="ButtonBase">
@@ -34,8 +119,8 @@
                         BorderThickness="1"
                         CornerRadius="{StaticResource Sd.Radius}"
                         Padding="{TemplateBinding Padding}">
-                    <ContentPresenter HorizontalAlignment="Center"
-                                      VerticalAlignment="Center"
+                    <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                      VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
                                       RecognizesAccessKey="True"/>
                 </Border>
                 <ControlTemplate.Triggers>
@@ -55,6 +140,8 @@
                 <Setter Property="Cursor" Value="Hand"/>
                 <Setter Property="Focusable" Value="False"/>
                 <Setter Property="SnapsToDevicePixels" Value="True"/>
+                <Setter Property="HorizontalContentAlignment" Value="Center"/>
+                <Setter Property="VerticalContentAlignment" Value="Center"/>
                 <Setter Property="Template" Value="{StaticResource Sd.ChromeButton}"/>
                 <Style.Triggers>
                     <Trigger Property="IsMouseOver" Value="True">
@@ -157,26 +244,245 @@
 
             <!-- ===== Form controls (settings window) ===== -->
 
-            <!-- Implicit text field: dark input on every TextBox -->
+            <!-- Implicit text field: rounded box + accent focus ring -->
             <Style TargetType="TextBox">
-                <Setter Property="Background" Value="{StaticResource Sd.BgRaised}"/>
+                <Setter Property="Background" Value="{StaticResource Sd.FieldFill}"/>
                 <Setter Property="Foreground" Value="{StaticResource Sd.Text}"/>
                 <Setter Property="BorderBrush" Value="{StaticResource Sd.Border}"/>
                 <Setter Property="BorderThickness" Value="1"/>
-                <Setter Property="CaretBrush" Value="{StaticResource Sd.Text}"/>
+                <Setter Property="CaretBrush" Value="{StaticResource Sd.Accent}"/>
                 <Setter Property="SelectionBrush" Value="{StaticResource Sd.Accent}"/>
-                <Setter Property="Padding" Value="6,3,6,3"/>
+                <Setter Property="Padding" Value="9,5,9,5"/>
                 <Setter Property="FontSize" Value="12"/>
+                <Setter Property="VerticalContentAlignment" Value="Center"/>
+                <Setter Property="SnapsToDevicePixels" Value="True"/>
+                <Setter Property="Template" Value="{StaticResource Sd.FieldTextBox}"/>
+            </Style>
+
+            <!-- Value readout: tabular numerals, centered, sitting inside a
+                 pill that owns the chrome. Mirrors the iOS inspector's
+                 monospacedDigit value field and TExP's dialkit value input. -->
+            <Style x:Key="Sd.ValueBox" TargetType="TextBox" BasedOn="{StaticResource {x:Type TextBox}}">
+                <Setter Property="Background" Value="Transparent"/>
+                <Setter Property="BorderThickness" Value="0"/>
+                <Setter Property="Padding" Value="4,0,4,0"/>
+                <Setter Property="FontFamily" Value="{StaticResource Sd.MonoFont}"/>
+                <Setter Property="FontSize" Value="12"/>
+                <Setter Property="FontWeight" Value="SemiBold"/>
+                <Setter Property="Foreground" Value="{StaticResource Sd.Text}"/>
+                <Setter Property="HorizontalContentAlignment" Value="Center"/>
+                <Setter Property="TextAlignment" Value="Center"/>
+                <Setter Property="Template" Value="{StaticResource Sd.FlatTextBox}"/>
+            </Style>
+
+            <!-- Pill that wraps a value readout; the row turns its own ring on
+                 when the inner editor takes focus. -->
+            <Style x:Key="Sd.ValuePill" TargetType="Border">
+                <Setter Property="Background" Value="{StaticResource Sd.FieldFill}"/>
+                <Setter Property="BorderBrush" Value="{StaticResource Sd.Border}"/>
+                <Setter Property="BorderThickness" Value="1"/>
+                <Setter Property="CornerRadius" Value="8"/>
+                <Setter Property="Height" Value="30"/>
+                <Setter Property="MinWidth" Value="58"/>
+                <Setter Property="Padding" Value="4,0,4,0"/>
+                <Setter Property="SnapsToDevicePixels" Value="True"/>
+            </Style>
+
+            <!-- The label+track half of a slider row. Focus lands on the whole
+                 scrubber pill, matching the iOS inspector's focused row. -->
+            <Style x:Key="Sd.ScrubberPill" TargetType="Border">
+                <Setter Property="Background" Value="{StaticResource Sd.FieldFill}"/>
+                <Setter Property="BorderBrush" Value="{StaticResource Sd.Border}"/>
+                <Setter Property="BorderThickness" Value="1"/>
+                <Setter Property="CornerRadius" Value="8"/>
+                <Setter Property="Height" Value="30"/>
+                <Setter Property="SnapsToDevicePixels" Value="True"/>
+            </Style>
+
+            <!-- Rounded combo with a custom chevron and a matching popup. -->
+            <Style x:Key="Sd.ComboBoxItem" TargetType="ComboBoxItem">
+                <Setter Property="Foreground" Value="{StaticResource Sd.Text}"/>
+                <Setter Property="FontSize" Value="12"/>
+                <Setter Property="Padding" Value="9,6,9,6"/>
+                <Setter Property="Cursor" Value="Hand"/>
+                <Setter Property="SnapsToDevicePixels" Value="True"/>
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="ComboBoxItem">
+                            <Border x:Name="Chrome"
+                                    Background="{TemplateBinding Background}"
+                                    CornerRadius="6"
+                                    Padding="{TemplateBinding Padding}"
+                                    SnapsToDevicePixels="True">
+                                <ContentPresenter VerticalAlignment="Center"/>
+                            </Border>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsHighlighted" Value="True">
+                                    <Setter TargetName="Chrome" Property="Background" Value="{StaticResource Sd.AccentSoft}"/>
+                                </Trigger>
+                                <Trigger Property="IsSelected" Value="True">
+                                    <Setter Property="FontWeight" Value="SemiBold"/>
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
             </Style>
 
             <Style x:Key="Sd.ComboBox" TargetType="ComboBox">
-                <Setter Property="Background" Value="{StaticResource Sd.Panel}"/>
+                <Setter Property="Background" Value="{StaticResource Sd.FieldFill}"/>
                 <Setter Property="Foreground" Value="{StaticResource Sd.Text}"/>
                 <Setter Property="BorderBrush" Value="{StaticResource Sd.Border}"/>
                 <Setter Property="BorderThickness" Value="1"/>
-                <Setter Property="Padding" Value="9,5,7,5"/>
+                <Setter Property="Padding" Value="9,0,26,0"/>
                 <Setter Property="FontSize" Value="12"/>
                 <Setter Property="MinHeight" Value="30"/>
+                <Setter Property="Cursor" Value="Hand"/>
+                <Setter Property="SnapsToDevicePixels" Value="True"/>
+                <Setter Property="ItemContainerStyle" Value="{StaticResource Sd.ComboBoxItem}"/>
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="ComboBox">
+                            <Grid>
+                                <Border x:Name="Ring"
+                                        Background="Transparent"
+                                        BorderBrush="Transparent"
+                                        BorderThickness="1"
+                                        CornerRadius="9"
+                                        SnapsToDevicePixels="True">
+                                    <Border x:Name="Field"
+                                            Background="{TemplateBinding Background}"
+                                            BorderBrush="{TemplateBinding BorderBrush}"
+                                            BorderThickness="{TemplateBinding BorderThickness}"
+                                            CornerRadius="8"
+                                            SnapsToDevicePixels="True">
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+                                            <ContentPresenter x:Name="Site"
+                                                              Margin="{TemplateBinding Padding}"
+                                                              HorizontalAlignment="Left"
+                                                              VerticalAlignment="Center"
+                                                              IsHitTestVisible="False"
+                                                              Content="{TemplateBinding SelectionBoxItem}"
+                                                              ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}"/>
+                                            <TextBlock x:Name="Arrow"
+                                                       Grid.Column="1"
+                                                       Margin="0,0,10,0"
+                                                       HorizontalAlignment="Right"
+                                                       VerticalAlignment="Center"
+                                                       IsHitTestVisible="False"
+                                                       FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
+                                                       FontSize="9"
+                                                       Text="&#xE70D;"
+                                                       Foreground="{StaticResource Sd.TextMuted}"/>
+                                        </Grid>
+                                    </Border>
+                                </Border>
+                                <ToggleButton x:Name="DropDownToggle"
+                                              Focusable="False"
+                                              Background="Transparent"
+                                              BorderThickness="0"
+                                              ClickMode="Press"
+                                              IsChecked="{Binding IsDropDownOpen, Mode=TwoWay, RelativeSource={RelativeSource TemplatedParent}}">
+                                    <ToggleButton.Template>
+                                        <ControlTemplate TargetType="ToggleButton">
+                                            <Border Background="Transparent"/>
+                                        </ControlTemplate>
+                                    </ToggleButton.Template>
+                                </ToggleButton>
+                                <Popup x:Name="PART_Popup"
+                                       AllowsTransparency="True"
+                                       Focusable="False"
+                                       IsOpen="{TemplateBinding IsDropDownOpen}"
+                                       Placement="Bottom"
+                                       PopupAnimation="Fade">
+                                    <Border Margin="0,4,0,0"
+                                            Padding="4"
+                                            MinWidth="{Binding ActualWidth, RelativeSource={RelativeSource TemplatedParent}}"
+                                            MaxHeight="260"
+                                            Background="{StaticResource Sd.BgRaised}"
+                                            BorderBrush="{StaticResource Sd.Border}"
+                                            BorderThickness="1"
+                                            CornerRadius="9">
+                                        <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                            <ItemsPresenter/>
+                                        </ScrollViewer>
+                                    </Border>
+                                </Popup>
+                            </Grid>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter TargetName="Field" Property="Background" Value="{StaticResource Sd.FieldHover}"/>
+                                </Trigger>
+                                <Trigger Property="IsKeyboardFocusWithin" Value="True">
+                                    <Setter TargetName="Ring" Property="BorderBrush" Value="{StaticResource Sd.Accent}"/>
+                                    <Setter TargetName="Field" Property="BorderBrush" Value="{StaticResource Sd.Accent}"/>
+                                </Trigger>
+                                <Trigger Property="IsDropDownOpen" Value="True">
+                                    <Setter TargetName="Field" Property="BorderBrush" Value="{StaticResource Sd.Accent}"/>
+                                    <Setter TargetName="Arrow" Property="Foreground" Value="{StaticResource Sd.Accent}"/>
+                                </Trigger>
+                                <Trigger Property="IsEnabled" Value="False">
+                                    <Setter TargetName="Field" Property="Opacity" Value="0.45"/>
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+
+            <!-- One option inside a segmented track. The selected option reads
+                 as a raised white tile, the way the iOS inspector and the
+                 reference panel both present a segmented picker. -->
+            <Style x:Key="Sd.Segment" TargetType="ToggleButton">
+                <Setter Property="Background" Value="Transparent"/>
+                <Setter Property="BorderBrush" Value="Transparent"/>
+                <Setter Property="BorderThickness" Value="1"/>
+                <Setter Property="Foreground" Value="{StaticResource Sd.TextMuted}"/>
+                <Setter Property="FontSize" Value="12"/>
+                <Setter Property="Padding" Value="8,5,8,5"/>
+                <Setter Property="Cursor" Value="Hand"/>
+                <Setter Property="Focusable" Value="False"/>
+                <Setter Property="SnapsToDevicePixels" Value="True"/>
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="ToggleButton">
+                            <Border x:Name="Chrome"
+                                    Background="{TemplateBinding Background}"
+                                    BorderBrush="{TemplateBinding BorderBrush}"
+                                    BorderThickness="{TemplateBinding BorderThickness}"
+                                    CornerRadius="6"
+                                    Padding="{TemplateBinding Padding}"
+                                    SnapsToDevicePixels="True">
+                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            </Border>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter TargetName="Chrome" Property="Background" Value="{StaticResource Sd.PanelHover}"/>
+                                </Trigger>
+                                <Trigger Property="IsChecked" Value="True">
+                                    <Setter TargetName="Chrome" Property="Background" Value="{StaticResource Sd.BgRaised}"/>
+                                    <Setter TargetName="Chrome" Property="BorderBrush" Value="{StaticResource Sd.Border}"/>
+                                    <Setter Property="Foreground" Value="{StaticResource Sd.Text}"/>
+                                    <Setter Property="FontWeight" Value="SemiBold"/>
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+
+            <!-- Track that holds a segmented control's options. -->
+            <Style x:Key="Sd.SegmentedTrack" TargetType="Border">
+                <Setter Property="Background" Value="{StaticResource Sd.FieldFill}"/>
+                <Setter Property="BorderBrush" Value="{StaticResource Sd.Border}"/>
+                <Setter Property="BorderThickness" Value="1"/>
+                <Setter Property="CornerRadius" Value="9"/>
+                <Setter Property="Padding" Value="3"/>
+                <Setter Property="SnapsToDevicePixels" Value="True"/>
             </Style>
 
             <!-- Checkbox with a drawn check so it reads on dark surfaces -->
@@ -335,16 +641,19 @@
                 </Setter>
             </Style>
 
-            <!-- Pill slider used inside the inspector (mac parity: label + track in one pill,
-                 value in a second pill, thin track 4px, 12px gray-bordered thumb). -->
+            <!-- Pill slider used inside the inspector. The track is a thin
+                 engraved groove rather than a heavy bar: 3px of accent on a
+                 3px light rail, with a small white thumb, so the label stays
+                 the loudest thing in the row (iOS sliderRadius/thin track,
+                 TExP dialkit row). -->
             <Style x:Key="Sd.PillSliderThumb" TargetType="Thumb">
                 <Setter Property="Template">
                     <Setter.Value>
                         <ControlTemplate TargetType="Thumb">
                             <Grid>
-                                <Ellipse Width="12" Height="12" Fill="White" Stroke="#FFC8CAD0" StrokeThickness="1.1">
+                                <Ellipse Width="11" Height="11" Fill="White" Stroke="#FFC8CAD0" StrokeThickness="1">
                                     <Ellipse.Effect>
-                                        <DropShadowEffect BlurRadius="3" ShadowDepth="1" Direction="270" Opacity="0.18" Color="#FF9AA0A8"/>
+                                        <DropShadowEffect BlurRadius="2.5" ShadowDepth="0.5" Direction="270" Opacity="0.2" Color="#FF9AA0A8"/>
                                     </Ellipse.Effect>
                                 </Ellipse>
                             </Grid>
@@ -364,7 +673,7 @@
                                         <RepeatButton Command="Slider.DecreaseLarge">
                                             <RepeatButton.Template>
                                                 <ControlTemplate TargetType="RepeatButton">
-                                                    <Border Height="4" CornerRadius="2" Background="{StaticResource Sd.Accent}"/>
+                                                    <Border Height="3" CornerRadius="1.5" Background="{StaticResource Sd.Accent}"/>
                                                 </ControlTemplate>
                                             </RepeatButton.Template>
                                         </RepeatButton>
@@ -373,7 +682,7 @@
                                         <RepeatButton Command="Slider.IncreaseLarge">
                                             <RepeatButton.Template>
                                                 <ControlTemplate TargetType="RepeatButton">
-                                                    <Border Height="4" CornerRadius="2" Background="#FFE0E0E2"/>
+                                                    <Border Height="3" CornerRadius="1.5" Background="#FFE4E4E9"/>
                                                 </ControlTemplate>
                                             </RepeatButton.Template>
                                         </RepeatButton>

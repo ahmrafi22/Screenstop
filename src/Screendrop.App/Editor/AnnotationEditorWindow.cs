@@ -21,7 +21,6 @@ internal sealed class AnnotationEditorWindow : Window
 {
     private readonly AnnotationCanvas _canvas = new();
     private readonly StackPanel _toolButtons = new() { Orientation = Orientation.Horizontal };
-    private readonly StackPanel _colorButtons = new() { Orientation = Orientation.Horizontal, Margin = new Thickness(10, 0, 0, 0) };
     private readonly Button _undoButton;
     private readonly Button _redoButton;
     private readonly TextBlock _zoomLabel;
@@ -94,6 +93,9 @@ internal sealed class AnnotationEditorWindow : Window
 
         var toolbar = BuildToolbar();
 
+        // Text annotations are typed straight onto the capture, so the editor
+        // is a quiet floating card rather than a full inspector field: soft
+        // fill, accent hairline, and the field's own focus ring.
         _textBox = new TextBox
         {
             AcceptsReturn = true,
@@ -101,10 +103,11 @@ internal sealed class AnnotationEditorWindow : Window
             FontSize = 14,
             MinWidth = 120,
             MaxWidth = 420,
-            Padding = new Thickness(4),
-            Background = new SolidColorBrush(Color.FromArgb(235, 255, 255, 255)),
-            BorderBrush = FindAppBrush("Sd.Accent"),
-            BorderThickness = new Thickness(1.5),
+            Padding = new Thickness(8, 5, 8, 5),
+            Background = new SolidColorBrush(Color.FromArgb(242, 255, 255, 255)),
+            BorderBrush = FindAppBrush("Sd.Border"),
+            BorderThickness = new Thickness(1),
+            VerticalContentAlignment = VerticalAlignment.Top,
             Visibility = Visibility.Collapsed,
         };
         _textBox.KeyDown += OnTextBoxKeyDown;
@@ -190,29 +193,32 @@ internal sealed class AnnotationEditorWindow : Window
         Closed += (_, _) => _canvas.ReleaseResources();
     }
 
-    /// Right-hand inspector: an Annotate tab (tools/styles) and a Background
-    /// tab (mockup stage presets + settings), mac inspector parity.
+    /// Right-hand inspector: every control in one continuous column. The
+    /// annotate tools/styles and the background stage used to sit behind an
+    /// Annotate/Background tab pair, which hid half the settings behind a
+    /// switch; they now read as a single panel that scrolls as one.
     private UIElement BuildInspectorPanel()
     {
-        var tabStyle = (Style)FindAppResource("Sd.TabItem");
-
         var backgroundInspector = new BackgroundInspector(_canvas);
-        var backgroundScroll = new ScrollViewer
-        {
-            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
-            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
-            Padding = new Thickness(12, 14, 12, 18),
-            Content = backgroundInspector,
-        };
 
-        var tabs = new TabControl
+        var column = new StackPanel();
+        column.Children.Add(_sidebar);
+        column.Children.Add(backgroundInspector);
+
+        return new Border
         {
             Width = 300,
-            Padding = new Thickness(6, 8, 0, 0),
+            Background = FindAppBrush("Sd.BgRaised"),
+            BorderBrush = FindAppBrush("Sd.BorderSoft"),
+            BorderThickness = new Thickness(1, 0, 0, 0),
+            Child = new ScrollViewer
+            {
+                VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+                HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+                Padding = new Thickness(12, 6, 12, 18),
+                Content = column,
+            },
         };
-        tabs.Items.Add(new TabItem { Header = "Annotate", Content = _sidebar, Style = tabStyle });
-        tabs.Items.Add(new TabItem { Header = "Background", Content = backgroundScroll, Style = tabStyle });
-        return tabs;
     }
 
     private void OnStartCrop(object sender, RoutedEventArgs e)
@@ -279,7 +285,6 @@ internal sealed class AnnotationEditorWindow : Window
         };
 
         BuildToolButtons();
-        BuildColorButtons();
 
         var exportButton = MakeTextButton("Export…", "Export a flattened PNG copy", OnExport);
         var saveButton = MakeSaveButton();
@@ -306,7 +311,6 @@ internal sealed class AnnotationEditorWindow : Window
 
         var leftCluster = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
         leftCluster.Children.Add(toolsPanel);
-        leftCluster.Children.Add(_colorButtons);
 
         var dock = new DockPanel
         {
@@ -351,56 +355,6 @@ internal sealed class AnnotationEditorWindow : Window
         }
 
         ActivateTool(AnnotationTool.Rectangle);
-    }
-
-    private void BuildColorButtons()
-    {
-        foreach (var color in AnnotationColor.Palette)
-        {
-            var swatch = new Border
-            {
-                Width = 20,
-                Height = 20,
-                CornerRadius = new CornerRadius(10),
-                Background = new SolidColorBrush(Color.FromArgb(color.A255, color.R255, color.G255, color.B255)),
-                BorderBrush = new SolidColorBrush(Color.FromArgb(90, 255, 255, 255)),
-                BorderThickness = new Thickness(1),
-                Margin = new Thickness(0, 0, 6, 0),
-                Cursor = Cursors.Hand,
-                VerticalAlignment = VerticalAlignment.Center,
-            };
-            swatch.MouseLeftButtonDown += (_, _) =>
-            {
-                _canvas.ActiveColor = color;
-                if (_canvas.Model.Selected is { } selected && selected.Tool.SupportsColor())
-                {
-                    _canvas.Model.BeginBatch();
-                    selected.Color = color;
-                    _canvas.Model.EndBatch();
-                }
-
-                HighlightSelectedColor();
-            };
-            swatch.Tag = color;
-            _colorButtons.Children.Add(swatch);
-        }
-
-        HighlightSelectedColor();
-    }
-
-    private void HighlightSelectedColor()
-    {
-        foreach (var child in _colorButtons.Children)
-        {
-            if (child is Border swatch && swatch.Tag is AnnotationColor color)
-            {
-                bool selected = color == _canvas.ActiveColor;
-                swatch.BorderThickness = new Thickness(selected ? 2.5 : 1);
-                swatch.BorderBrush = selected
-                    ? FindAppBrush("Sd.Accent")
-                    : new SolidColorBrush(Color.FromArgb(90, 255, 255, 255));
-            }
-        }
     }
 
     private void ActivateTool(AnnotationTool tool)
@@ -789,11 +743,19 @@ internal static class ToolIcon
         HorizontalAlignment = HorizontalAlignment.Center,
     };
 
-    public static FrameworkElement SelectCursor() => Host(16, 16, new TextBlock
+    /// Classic arrow pointer, drawn rather than taken from an icon font so it
+    /// renders identically on every Windows build. The Segoe touch-pointer
+    /// glyph (E7A9) used here before collapsed to a thin bar at 15px.
+    public static FrameworkElement SelectCursor() => Host(16, 16, new Canvas
     {
-        Text = "\uE7A9", // Segoe touch-pointer: stand-in for mac's hand.point.up.left
-        FontFamily = UiGlyph.Font,
-        FontSize = 15,
+        Width = 16,
+        Height = 16,
+        Children =
+        {
+            Filled("M4,1.2 L4,12.6 L6.9,10.1 L8.7,14.2 L10.6,13.3 L8.8,9.3 L12.2,9.1 Z"),
+        },
+        VerticalAlignment = VerticalAlignment.Center,
+        HorizontalAlignment = HorizontalAlignment.Center,
     });
 
     public static FrameworkElement Rectangle() => Host(16, 16, Stroked("M2,3.5 L14,3.5 L14,12.5 L2,12.5 Z"));

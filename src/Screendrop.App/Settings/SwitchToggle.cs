@@ -47,16 +47,19 @@ internal sealed class SwitchToggle : CheckBox
             ShadowDepth = 1,
             Direction = 270,
         });
-        thumb.SetValue(Border.RenderTransformProperty, new TranslateTransform(0, 0));
+        // No RenderTransform here: anything declared in a template is frozen
+        // once applied, and a frozen transform can neither be animated nor
+        // assigned. PositionThumb creates a live one instead.
 
         track.AppendChild(thumb);
         template.VisualTree = track;
 
-        // Checked: accent track at full opacity.
+        // Checked: accent track at full opacity, taken from the shared token so
+        // the switch matches every other live control.
         var checkedTrigger = new Trigger { Property = IsCheckedProperty, Value = true };
         checkedTrigger.Setters.Add(new Setter(
             Border.BackgroundProperty,
-            new SolidColorBrush(Color.FromRgb(49, 130, 237)),
+            (Brush)Application.Current.Resources["Sd.Accent"],
             "Track"));
         checkedTrigger.Setters.Add(new Setter(
             Border.OpacityProperty, 1.0, "Track"));
@@ -79,13 +82,25 @@ internal sealed class SwitchToggle : CheckBox
 
     private void PositionThumb(bool animate)
     {
-        if (Template.FindName("Thumb", this) is not Border thumb
-            || thumb.RenderTransform is not TranslateTransform translate)
+        if (Template.FindName("Thumb", this) is not Border thumb)
         {
             return;
         }
 
+        // The template cannot supply a usable transform, so make one the first
+        // time the thumb is positioned.
+        if (thumb.RenderTransform is not TranslateTransform translate)
+        {
+            translate = new TranslateTransform(0, 0);
+            thumb.RenderTransform = translate;
+        }
+
         double toX = IsChecked == true ? ThumbTravel : 0;
+
+        // An animation holds its target property in a read-only state until it
+        // is removed, so clear any in-flight animation before assigning.
+        translate.BeginAnimation(TranslateTransform.XProperty, null);
+
         if (!animate)
         {
             translate.X = toX;
