@@ -296,9 +296,9 @@ internal sealed class PreviewPanelWindow : Window
 
         var button = new Button
         {
-            Width = 22,
-            Height = 22,
-            Margin = new Thickness(9),
+            Width = 26,
+            Height = 26,
+            Margin = new Thickness(10),
             HorizontalAlignment = horizontal,
             VerticalAlignment = vertical,
             ToolTip = action.Value.Help(),
@@ -309,7 +309,7 @@ internal sealed class PreviewPanelWindow : Window
             {
                 Text = action.Value.Glyph(),
                 FontFamily = IconTypeface.FontFamily,
-                FontSize = 10,
+                FontSize = 11,
                 FontWeight = FontWeights.Bold,
                 Foreground = Brushes.Black,
                 HorizontalAlignment = HorizontalAlignment.Center,
@@ -326,16 +326,22 @@ internal sealed class PreviewPanelWindow : Window
 
     private static ControlTemplate CornerButtonTemplate()
     {
+        // Frosted chip rather than a flat white disc: a translucent fill over
+        // the screenshot, a hairline edge, and an accent wash on hover so the
+        // action reads as live before you commit to the click.
         var template = new ControlTemplate(typeof(Button));
         var border = new FrameworkElementFactory(typeof(Border));
-        border.SetValue(Border.BackgroundProperty, Brushes.White);
-        border.SetValue(Border.CornerRadiusProperty, new CornerRadius(11));
+        border.Name = "PART_Chrome";
+        border.SetValue(Border.BackgroundProperty, new SolidColorBrush(Color.FromArgb(232, 255, 255, 255)));
+        border.SetValue(Border.CornerRadiusProperty, new CornerRadius(8));
+        border.SetValue(Border.BorderThicknessProperty, new Thickness(1));
+        border.SetValue(Border.BorderBrushProperty, new SolidColorBrush(Color.FromArgb(38, 0, 0, 0)));
         border.SetValue(Border.EffectProperty, new DropShadowEffect
         {
             Color = Colors.Black,
-            Opacity = 0.22,
-            BlurRadius = 3,
-            ShadowDepth = 1,
+            Opacity = 0.24,
+            BlurRadius = 6,
+            ShadowDepth = 2,
             Direction = 270,
         });
         var presenter = new FrameworkElementFactory(typeof(ContentPresenter));
@@ -344,17 +350,22 @@ internal sealed class PreviewPanelWindow : Window
         border.AppendChild(presenter);
         template.VisualTree = border;
 
-        template.Triggers.Add(new Trigger
+        var hover = new Trigger
         {
             Property = IsMouseOverProperty,
             Value = true,
-            Setters = { new Setter(UIElement.OpacityProperty, 0.85) },
-        });
+        };
+        hover.Setters.Add(new Setter(
+            Border.BackgroundProperty, new SolidColorBrush(Color.FromArgb(255, 255, 255, 255)), "PART_Chrome"));
+        hover.Setters.Add(new Setter(
+            Border.BorderBrushProperty, new SolidColorBrush(Color.FromArgb(120, 0, 0, 0)), "PART_Chrome"));
+        template.Triggers.Add(hover);
+
         template.Triggers.Add(new Trigger
         {
             Property = ButtonBase.IsPressedProperty,
             Value = true,
-            Setters = { new Setter(UIElement.OpacityProperty, 0.7) },
+            Setters = { new Setter(UIElement.OpacityProperty, 0.75) },
         });
         return template;
     }
@@ -388,17 +399,23 @@ internal sealed class PreviewPanelWindow : Window
 
     private static ControlTemplate PillTemplate()
     {
+        // The primary action row. Frosted fill over the screenshot, a hairline
+        // edge, and a full-white lift on hover so the pill reads as the
+        // thing you are meant to press.
         var template = new ControlTemplate(typeof(Button));
         var border = new FrameworkElementFactory(typeof(Border));
-        border.SetValue(Border.BackgroundProperty, new SolidColorBrush(Color.FromArgb(217, 255, 255, 255)));
-        border.SetValue(Border.CornerRadiusProperty, new CornerRadius(12));
-        border.SetValue(Border.PaddingProperty, new Thickness(13, 6, 13, 6));
+        border.Name = "PART_Chrome";
+        border.SetValue(Border.BackgroundProperty, new SolidColorBrush(Color.FromArgb(228, 255, 255, 255)));
+        border.SetValue(Border.CornerRadiusProperty, new CornerRadius(10));
+        border.SetValue(Border.BorderThicknessProperty, new Thickness(1));
+        border.SetValue(Border.BorderBrushProperty, new SolidColorBrush(Color.FromArgb(34, 0, 0, 0)));
+        border.SetValue(Border.PaddingProperty, new Thickness(15, 7, 15, 7));
         border.SetValue(Border.EffectProperty, new DropShadowEffect
         {
             Color = Colors.Black,
-            Opacity = 0.22,
-            BlurRadius = 3,
-            ShadowDepth = 1,
+            Opacity = 0.24,
+            BlurRadius = 7,
+            ShadowDepth = 2,
             Direction = 270,
         });
         var presenter = new FrameworkElementFactory(typeof(ContentPresenter));
@@ -407,17 +424,22 @@ internal sealed class PreviewPanelWindow : Window
         border.AppendChild(presenter);
         template.VisualTree = border;
 
-        template.Triggers.Add(new Trigger
+        var hover = new Trigger
         {
             Property = IsMouseOverProperty,
             Value = true,
-            Setters = { new Setter(UIElement.OpacityProperty, 0.88) },
-        });
+        };
+        hover.Setters.Add(new Setter(
+            Border.BackgroundProperty, Brushes.White, "PART_Chrome"));
+        hover.Setters.Add(new Setter(
+            Border.BorderBrushProperty, new SolidColorBrush(Color.FromArgb(110, 0, 0, 0)), "PART_Chrome"));
+        template.Triggers.Add(hover);
+
         template.Triggers.Add(new Trigger
         {
             Property = ButtonBase.IsPressedProperty,
             Value = true,
-            Setters = { new Setter(UIElement.OpacityProperty, 0.72) },
+            Setters = { new Setter(UIElement.OpacityProperty, 0.78) },
         });
         return template;
     }

@@ -48,25 +48,31 @@ public static class ProgressiveBlurRenderer
         for (int i = 0; i < count; i++)
         {
             byte t = i < ramp.Length ? ramp[i] : (byte)255;
+            SKColor a = from[i];
+
             if (t == 0)
             {
-                destination[i] = from[i];
+                destination[i] = a;
                 continue;
             }
 
+            SKColor b = to[i];
             if (t == 255)
             {
-                destination[i] = to[i];
+                destination[i] = new SKColor(b.Red, b.Green, b.Blue, a.Alpha);
                 continue;
             }
 
-            SKColor a = from[i];
-            SKColor b = to[i];
+            // Alpha always comes from the sharp image. A blur averages in the
+            // transparent pixels just outside the source, so its own alpha
+            // falls off around the border; interpolating that would make the
+            // corners transparent and let the backdrop show through as a white
+            // halo. Colour is what the blur is for; coverage is not.
             destination[i] = new SKColor(
                 (byte)(a.Red + ((b.Red - a.Red) * t / 255f)),
                 (byte)(a.Green + ((b.Green - a.Green) * t / 255f)),
                 (byte)(a.Blue + ((b.Blue - a.Blue) * t / 255f)),
-                (byte)(a.Alpha + ((b.Alpha - a.Alpha) * t / 255f)));
+                a.Alpha);
         }
 
         // Any tail the spans did not cover (colour types without a 4-byte
