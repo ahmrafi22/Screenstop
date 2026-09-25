@@ -7,6 +7,12 @@ namespace Screenstop.Rendering;
 /// cross-fades a fully blurred copy over the sharp source using a mask derived
 /// from the shared ProgressiveBlurGeometry — visually equivalent to mac's
 /// CIFilter.maskedVariableBlur for stills.
+///
+/// The blend is done per pixel rather than with a canvas blend mode. Routing a
+/// mask bitmap through <c>DstIn</c> depends on how Skia premultiplies the
+/// stencil, and getting that wrong silently inverts the focus region - the
+/// sharp centre comes out washed out while the edges stay crisp. A plain byte
+/// ramp has no such ambiguity.
 public static class ProgressiveBlurRenderer
 {
     public static SKBitmap Apply(SKBitmap source, ProgressiveBlurSettings settings)
@@ -19,23 +25,55 @@ public static class ProgressiveBlurRenderer
         var extent = new RectD(0, 0, source.Width, source.Height);
         var geometry = new ProgressiveBlurGeometry(extent, settings, BlurCoordinateOrigin.TopLeft);
 
-        using var mask = BuildMask(source.Width, source.Height, geometry, settings.Mode);
+        byte[] ramp = BuildRamp(source.Width, source.Height, geometry, settings.Mode);
+
         using var blurred = Blur(source, (float)(geometry.RenderRadius * 0.5));
+        return Blend(source, blurred, ramp);
+    }
 
-        var result = new SKBitmap(source.Info);
-        using (var canvas = new SKCanvas(result))
+    /// <summary>Cross-fades <paramref name="blurred"/> over <paramref name="sharp"/>.</summary>
+    private static SKBitmap Blend(SKBitmap sharp, SKBitmap blurred, byte[] ramp)
+    {
+        var result = new SKBitmap(sharp.Info);
+
+        using var resultPixels = result.PeekPixels();
+        using var sharpPixels = sharp.PeekPixels();
+        using var blurredPixels = blurred.PeekPixels();
+
+        Span<SKColor> destination = resultPixels.GetPixelSpan<SKColor>();
+        Span<SKColor> from = sharpPixels.GetPixelSpan<SKColor>();
+        Span<SKColor> to = blurredPixels.GetPixelSpan<SKColor>();
+
+        int count = Math.Min(destination.Length, Math.Min(from.Length, to.Length));
+        for (int i = 0; i < count; i++)
         {
-            canvas.DrawBitmap(source, 0, 0);
-
-            using var blended = new SKBitmap(source.Info);
-            using (var blendCanvas = new SKCanvas(blended))
+            byte t = i < ramp.Length ? ramp[i] : (byte)255;
+            if (t == 0)
             {
-                blendCanvas.DrawBitmap(blurred, 0, 0);
-                using var maskPaint = new SKPaint { BlendMode = SKBlendMode.DstIn };
-                blendCanvas.DrawBitmap(mask, 0, 0, maskPaint);
+                destination[i] = from[i];
+                continue;
             }
 
-            canvas.DrawBitmap(blended, 0, 0);
+            if (t == 255)
+            {
+                destination[i] = to[i];
+                continue;
+            }
+
+            SKColor a = from[i];
+            SKColor b = to[i];
+            destination[i] = new SKColor(
+                (byte)(a.Red + ((b.Red - a.Red) * t / 255f)),
+                (byte)(a.Green + ((b.Green - a.Green) * t / 255f)),
+                (byte)(a.Blue + ((b.Blue - a.Blue) * t / 255f)),
+                (byte)(a.Alpha + ((b.Alpha - a.Alpha) * t / 255f)));
+        }
+
+        // Any tail the spans did not cover (colour types without a 4-byte
+        // SKColor mapping, for instance) keeps the sharp image.
+        for (int i = count; i < destination.Length; i++)
+        {
+            destination[i] = from[Math.Min(i, from.Length - 1)];
         }
 
         return result;
@@ -50,6 +88,9 @@ public static class ProgressiveBlurRenderer
 
         var result = new SKBitmap(source.Info);
         using var canvas = new SKCanvas(result);
+        // The blur filter samples past the edges, so start from a known state
+        // rather than whatever the allocator handed back.
+        canvas.Clear(SKColors.Transparent);
         using var paint = new SKPaint
         {
             ImageFilter = SKImageFilter.CreateBlur(sigma, sigma),
@@ -58,39 +99,34 @@ public static class ProgressiveBlurRenderer
         return result;
     }
 
-    /// Alpha mask: 0 = keep sharp, 255 = fully blurred.
-    private static SKBitmap BuildMask(int width, int height, ProgressiveBlurGeometry geometry, ProgressiveBlurMode mode)
+    /// <summary>Per-pixel blend weight: 0 keeps the sharp image, 255 takes the blur.</summary>
+    private static byte[] BuildRamp(int width, int height, ProgressiveBlurGeometry geometry, ProgressiveBlurMode mode)
     {
-        var mask = new SKBitmap(width, height, SKColorType.Bgra8888, SKAlphaType.Premul);
-        var pixels = new SKColor[width * height];
-
+        var ramp = new byte[width * height];
         double transition = Math.Max(geometry.TransitionWidth, 0.0001);
+
+        bool radial = mode == ProgressiveBlurMode.Radial;
+        double innerRadius = radial ? geometry.RadialFocusRadius : geometry.DirectionalFocusHalfWidth;
 
         for (int y = 0; y < height; y++)
         {
             for (int x = 0; x < width; x++)
             {
-                double distance = mode == ProgressiveBlurMode.Radial
+                double distance = radial
                     ? Distance(x, y, geometry.Focus.X, geometry.Focus.Y)
                     : Math.Abs(
                         (x - geometry.Focus.X) * geometry.DirectionNormal.Dx
                         + (y - geometry.Focus.Y) * geometry.DirectionNormal.Dy);
 
-                double innerRadius = mode == ProgressiveBlurMode.Radial
-                    ? geometry.RadialFocusRadius
-                    : geometry.DirectionalFocusHalfWidth;
-
                 double t = (distance - innerRadius) / transition;
                 t = Math.Clamp(t, 0, 1);
                 t = t * t * (3 - 2 * t);
 
-                byte alpha = (byte)(t * 255);
-                pixels[y * width + x] = new SKColor(255, 255, 255, alpha);
+                ramp[y * width + x] = (byte)(t * 255);
             }
         }
 
-        mask.Pixels = pixels;
-        return mask;
+        return ramp;
     }
 
     private static double Distance(double x0, double y0, double x1, double y1)

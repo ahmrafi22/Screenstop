@@ -3,6 +3,7 @@ using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
+using Screenstop.App.Controls;
 using Screenstop.App.Infrastructure;
 using Screenstop.Core.Background;
 using Screenstop.Core.Settings;
@@ -120,9 +121,9 @@ internal sealed class SettingsWindow : Window
         _fileNamePattern = new TextBox
         {
             Text = settings.FileNamePattern,
-            Padding = new Thickness(6, 3, 6, 3),
             VerticalContentAlignment = VerticalAlignment.Center,
         };
+        Placeholder.SetText(_fileNamePattern, "Screenstop-{timestamp}");
 
         _previewPosition = BuildCombo(new[] { "Bottom left", "Bottom right" }, settings.PreviewPosition == PreviewPosition.Left ? 0 : 1);
         _autoClose = BuildCombo(new[] { "Never", "5 seconds", "10 seconds", "30 seconds", "60 seconds" }, AutoCloseIndex(settings.PreviewAutoCloseSeconds));

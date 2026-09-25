@@ -4,6 +4,8 @@ using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
+using Screenstop.App.Controls;
+using Screenstop.App.Settings;
 using Screenstop.Core.Background;
 
 namespace Screenstop.App.Editor;
@@ -22,6 +24,8 @@ internal sealed class BackgroundInspector : UserControl
     private bool _updating;
 
     private readonly StackPanel _root = new();
+    private readonly HashSet<string> _collapsed = new(StringComparer.Ordinal);
+    private StackPanel? _styleDetail;
 
     public BackgroundInspector(AnnotationCanvas canvas)
     {
@@ -111,7 +115,7 @@ internal sealed class BackgroundInspector : UserControl
                 return;
             }
 
-            Rebuild(section, BuildPresetSection());
+            Refresh();
         };
 
         section.Children.Add(box);
@@ -125,38 +129,23 @@ internal sealed class BackgroundInspector : UserControl
     {
         var section = Section("Background");
 
-        var kind = new Grid { Margin = new Thickness(0, 0, 0, 8) };
-        for (int i = 0; i < 4; i++)
+        var kind = new SegmentedControl(
+            ("None", BackgroundStyleKind.None),
+            ("Color", BackgroundStyleKind.Solid),
+            ("Gradient", BackgroundStyleKind.Gradient),
+            ("Image", BackgroundStyleKind.Wallpaper))
         {
-            kind.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        }
-
-        AddKindButton(kind, 0, "None", BackgroundStyleKind.None);
-        AddKindButton(kind, 1, "Color", BackgroundStyleKind.Solid);
-        AddKindButton(kind, 2, "Gradient", BackgroundStyleKind.Gradient);
-        AddKindButton(kind, 3, "Image", BackgroundStyleKind.Wallpaper);
-        section.Children.Add(kind);
-
-        var detail = new StackPanel();
-        section.Children.Add(detail);
-        section.Tag = detail;
-        return section;
-    }
-
-    private void AddKindButton(Grid host, int column, string label, BackgroundStyleKind kind)
-    {
-        var button = new ToggleButton
-        {
-            Content = label,
-            Style = (Style)Application.Current.Resources["Sd.ToolToggle"],
-            Height = 28,
-            Margin = new Thickness(column == 0 ? 0 : 2, 0, column == 3 ? 0 : 2, 0),
-            IsChecked = _settings.Style.Kind == kind,
-            Tag = kind,
+            Margin = new Thickness(0, 0, 0, 8),
         };
-        button.Click += (_, _) =>
+        kind.Select(_settings.Style.Kind, raise: false);
+        kind.SelectionChanged += tag =>
         {
-            _settings.Style = kind switch
+            if (tag is not BackgroundStyleKind picked)
+            {
+                return;
+            }
+
+            _settings.Style = picked switch
             {
                 BackgroundStyleKind.Solid => BackgroundStyle.Solid(
                     _settings.Style.ColorId ?? BackgroundColor.Black.ColorId),
@@ -169,8 +158,12 @@ internal sealed class BackgroundInspector : UserControl
             Apply();
             Refresh();
         };
-        Grid.SetColumn(button, column);
-        host.Children.Add(button);
+        section.Children.Add(kind);
+
+        var detail = new StackPanel();
+        _styleDetail = detail;
+        section.Children.Add(detail);
+        return section;
     }
 
     private UIElement BuildSolidPicker()
@@ -300,7 +293,145 @@ internal sealed class BackgroundInspector : UserControl
             Apply();
         };
         stack.Children.Add(box);
+        stack.Children.Add(BuildWallpaperStrip());
+        stack.Children.Add(BuildWallpaperButtons());
 
+        return stack;
+    }
+
+    /// <summary>
+    /// A horizontal strip of wallpaper tiles with a dashed "add" tile at the
+    /// end, matching the inspector's tile treatment: hairline ring at rest,
+    /// accent ring held off the tile when selected.
+    /// </summary>
+    private UIElement BuildWallpaperStrip()
+    {
+        var recent = _wallpaperStore.RecentWallpapers;
+        var firstPack = WallpaperPack.BuiltIn.FirstOrDefault();
+        var builtIn = firstPack is null ? Array.Empty<string>() : _wallpaperStore.WallpapersFor(firstPack);
+        var sources = recent.Concat(builtIn).Distinct().Take(6).ToList();
+        if (sources.Count == 0)
+        {
+            return new TextBlock
+            {
+                Text = "No wallpapers installed yet.",
+                FontSize = 11,
+                Foreground = Brush("Sd.TextMuted"),
+                Margin = new Thickness(0, 8, 0, 0),
+            };
+        }
+
+        var strip = new WrapPanel { Margin = new Thickness(0, 8, 0, 0) };
+        foreach (string path in sources)
+        {
+            bool active = string.Equals(_settings.Style.WallpaperPath, path, StringComparison.OrdinalIgnoreCase);
+            var tile = new Border
+            {
+                Width = 52,
+                Height = 34,
+                CornerRadius = new CornerRadius(6),
+                BorderBrush = active ? Brush("Sd.Accent") : Brush("Sd.Border"),
+                BorderThickness = new Thickness(active ? 2 : 1),
+                Margin = new Thickness(active ? 1 : 2, active ? 1 : 2, 4, 4),
+                Cursor = Cursors.Hand,
+                ToolTip = Path.GetFileNameWithoutExtension(path),
+                ClipToBounds = true,
+                Child = new Image
+                {
+                    Source = LoadThumbnail(path),
+                    Stretch = Stretch.UniformToFill,
+                    SnapsToDevicePixels = true,
+                },
+            };
+            tile.MouseLeftButtonDown += (_, _) =>
+            {
+                _settings.Style = BackgroundStyle.Wallpaper(path);
+                _wallpaperStore.AddRecent(path);
+                Apply();
+                Refresh();
+            };
+            strip.Children.Add(tile);
+        }
+
+        strip.Children.Add(BuildAddTile());
+        return strip;
+    }
+
+    private FrameworkElement BuildAddTile()
+    {
+        var tile = new Border
+        {
+            Width = 52,
+            Height = 34,
+            CornerRadius = new CornerRadius(6),
+            Background = Brush("Sd.Panel"),
+            BorderBrush = Brush("Sd.Border"),
+            BorderThickness = new Thickness(1),
+            Margin = new Thickness(2, 2, 0, 2),
+            Cursor = Cursors.Hand,
+            ToolTip = "Choose a wallpaper from this computer",
+            Child = new TextBlock
+            {
+                Text = "+",
+                FontSize = 16,
+                FontWeight = FontWeights.Light,
+                Foreground = Brush("Sd.TextMuted"),
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center,
+            },
+        };
+
+        // Reads as an "add" affordance rather than another selectable tile.
+        tile.MouseEnter += (_, _) => tile.BorderBrush = Brush("Sd.TextMuted");
+        tile.MouseLeave += (_, _) => tile.BorderBrush = Brush("Sd.Border");
+        tile.MouseLeftButtonDown += (_, _) => ChooseWallpaperFromDisk();
+        return tile;
+    }
+
+    private static ImageSource? LoadThumbnail(string path)
+    {
+        try
+        {
+            if (!File.Exists(path))
+            {
+                return null;
+            }
+
+            var bitmap = new System.Windows.Media.Imaging.BitmapImage();
+            bitmap.BeginInit();
+            bitmap.DecodePixelWidth = 104;
+            bitmap.CacheOption = System.Windows.Media.Imaging.BitmapCacheOption.OnLoad;
+            bitmap.UriSource = new Uri(path);
+            bitmap.EndInit();
+            bitmap.Freeze();
+            return bitmap;
+        }
+        catch (Exception)
+        {
+            return null;
+        }
+    }
+
+    private void ChooseWallpaperFromDisk()
+    {
+        var dialog = new Microsoft.Win32.OpenFileDialog
+        {
+            Title = "Choose a wallpaper",
+            Filter = "Images|*.png;*.jpg;*.jpeg;*.webp;*.bmp;*.gif;*.tif;*.tiff",
+        };
+        if (dialog.ShowDialog() != true)
+        {
+            return;
+        }
+
+        _settings.Style = BackgroundStyle.Wallpaper(dialog.FileName);
+        _wallpaperStore.AddRecent(dialog.FileName);
+        Apply();
+        Refresh();
+    }
+
+    private UIElement BuildWallpaperButtons()
+    {
         var buttons = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 6, 0, 0) };
         var choose = new Button
         {
@@ -363,8 +494,7 @@ internal sealed class BackgroundInspector : UserControl
 
         buttons.Children.Add(choose);
         buttons.Children.Add(get);
-        stack.Children.Add(buttons);
-        return stack;
+        return buttons;
     }
 
     // ---------------------------------------------------------------- layout
@@ -500,19 +630,19 @@ internal sealed class BackgroundInspector : UserControl
 
     private UIElement BuildBlurSection()
     {
-        var section = Section("Focus Blur");
+        // The on/off switch lives in the section header, the way the iOS
+        // inspector presents it, and the dependent controls grey out while it
+        // is off. Without that, the sliders look live but nothing happens -
+        // which is exactly the "blur does nothing" confusion this fixes.
+        var toggle = new SwitchToggle { IsChecked = _settings.ProgressiveBlur.IsEnabled };
+        var section = Section("Focus Blur", toggle);
+        var body = new StackPanel { IsEnabled = _settings.ProgressiveBlur.IsEnabled };
+        section.Children.Add(body);
 
-        var enable = new CheckBox
-        {
-            Content = "Enable focus blur",
-            IsChecked = _settings.ProgressiveBlur.IsEnabled,
-            Margin = new Thickness(0, 0, 0, 6),
-        };
-        enable.Checked += (_, _) => { _settings.ProgressiveBlur.IsEnabled = true; Apply(); Refresh(); };
-        enable.Unchecked += (_, _) => { _settings.ProgressiveBlur.IsEnabled = false; Apply(); Refresh(); };
-        section.Children.Add(enable);
+        toggle.Checked += (_, _) => SetBlurEnabled(true);
+        toggle.Unchecked += (_, _) => SetBlurEnabled(false);
 
-        section.Children.Add(Picker("Applies to",
+        body.Children.Add(Picker("Applies to",
             Enum.GetValues<ProgressiveBlurEdgeMode>().Select(m => m.Title()).ToArray(),
             (int)_settings.ProgressiveBlur.EdgeMode,
             index =>
@@ -521,28 +651,35 @@ internal sealed class BackgroundInspector : UserControl
                 Apply();
             }));
 
-        section.Children.Add(Picker("Mode",
-            Enum.GetValues<ProgressiveBlurMode>().Select(m => m.Title()).ToArray(),
-            (int)_settings.ProgressiveBlur.Mode,
-            index =>
+        var mode = new SegmentedControl(
+            (ProgressiveBlurMode.Radial.Title(), ProgressiveBlurMode.Radial),
+            (ProgressiveBlurMode.Directional.Title(), ProgressiveBlurMode.Directional));
+        mode.Select(_settings.ProgressiveBlur.Mode, raise: false);
+        mode.SelectionChanged += tag =>
+        {
+            if (tag is not ProgressiveBlurMode picked)
             {
-                _settings.ProgressiveBlur.Mode = (ProgressiveBlurMode)index;
-                Apply();
-                Refresh();
-            }));
+                return;
+            }
 
-        section.Children.Add(Slider("Strength", () => _settings.ProgressiveBlur.Strength, v => _settings.ProgressiveBlur.Strength = v, 0, 48, v => $"{v:0}"));
-        section.Children.Add(Slider("Falloff", () => _settings.ProgressiveBlur.Falloff, v => _settings.ProgressiveBlur.Falloff = v, 0.05, 1, FormatPercent));
-        section.Children.Add(Slider("Focus size", () => _settings.ProgressiveBlur.FocusSize, v => _settings.ProgressiveBlur.FocusSize = v, 0.05, 1, FormatPercent));
+            _settings.ProgressiveBlur.Mode = picked;
+            Apply();
+            Refresh();
+        };
+        body.Children.Add(mode);
+
+        body.Children.Add(Slider("Strength", () => _settings.ProgressiveBlur.Strength, v => _settings.ProgressiveBlur.Strength = v, 0, 48, v => $"{v:0}"));
+        body.Children.Add(Slider("Falloff", () => _settings.ProgressiveBlur.Falloff, v => _settings.ProgressiveBlur.Falloff = v, 0.05, 1, FormatPercent));
+        body.Children.Add(Slider("Focus size", () => _settings.ProgressiveBlur.FocusSize, v => _settings.ProgressiveBlur.FocusSize = v, 0.05, 1, FormatPercent));
 
         if (_settings.ProgressiveBlur.Mode == ProgressiveBlurMode.Directional)
         {
-            section.Children.Add(Slider("Direction", () => _settings.ProgressiveBlur.DirectionDegrees, v => _settings.ProgressiveBlur.DirectionDegrees = v, -90, 90, v => $"{Math.Round(v):0}°"));
+            body.Children.Add(Slider("Direction", () => _settings.ProgressiveBlur.DirectionDegrees, v => _settings.ProgressiveBlur.DirectionDegrees = v, -90, 90, v => $"{Math.Round(v):0}°"));
         }
 
-        section.Children.Add(BuildFocusPad());
+        body.Children.Add(BuildFocusPad());
 
-        section.Children.Add(new TextBlock
+        body.Children.Add(new TextBlock
         {
             Text = "Drag the pad to move the sharp focal area; double-click to center it.",
             FontSize = 11,
@@ -551,6 +688,15 @@ internal sealed class BackgroundInspector : UserControl
             Margin = new Thickness(0, 4, 0, 0),
         });
         return section;
+    }
+
+    private void SetBlurEnabled(bool enabled)
+    {
+        _settings.ProgressiveBlur.IsEnabled = enabled;
+        Apply();
+
+        // Rebuild so every dependent control picks up the new enabled state.
+        Refresh();
     }
 
     /// "Focus position" header + draggable pad (mac AnnotationFocusPositionPad parity).
@@ -694,9 +840,9 @@ internal sealed class BackgroundInspector : UserControl
         var text = new TextBox
         {
             Text = _settings.Watermark.Text,
-            Padding = new Thickness(6, 3, 6, 3),
             Margin = new Thickness(0, 0, 0, 6),
         };
+        Placeholder.SetText(text, "Add a watermark");
         text.LostFocus += (_, _) =>
         {
             _settings.Watermark.Text = text.Text;
@@ -719,6 +865,7 @@ internal sealed class BackgroundInspector : UserControl
         try
         {
             _root.Children.Clear();
+            _styleDetail = null;
             _root.Children.Add(BuildPresetSection());
             _root.Children.Add(BuildStyleSection());
             _root.Children.Add(BuildLayoutSection());
@@ -727,22 +874,8 @@ internal sealed class BackgroundInspector : UserControl
             _root.Children.Add(BuildBlurSection());
             _root.Children.Add(BuildBorderSection());
             _root.Children.Add(BuildWatermarkSection());
+            PromoteSections();
             RefreshStyleDetail();
-        }
-        finally
-        {
-            _updating = false;
-        }
-    }
-
-    private void Rebuild(StackPanel host, UIElement replacement)
-    {
-        _updating = true;
-        try
-        {
-            int index = _root.Children.IndexOf(host);
-            _root.Children.RemoveAt(index);
-            _root.Children.Insert(index, replacement);
         }
         finally
         {
@@ -754,40 +887,73 @@ internal sealed class BackgroundInspector : UserControl
     /// the active style kind.
     private void RefreshStyleDetail()
     {
-        foreach (var child in _root.Children)
+        if (_styleDetail is null)
         {
-            if (child is StackPanel { Tag: StackPanel detail })
-            {
-                detail.Children.Clear();
-                detail.Children.Add(_settings.Style.Kind switch
-                {
-                    BackgroundStyleKind.Solid => BuildSolidPicker(),
-                    BackgroundStyleKind.Gradient => BuildGradientPicker(),
-                    BackgroundStyleKind.Wallpaper => BuildWallpaperPicker(),
-                    _ => new TextBlock
-                    {
-                        Text = "No background. Pick Color, Gradient, or Image.",
-                        FontSize = 11,
-                        Foreground = Brush("Sd.TextMuted"),
-                        TextWrapping = TextWrapping.Wrap,
-                    },
-                });
-            }
+            return;
         }
+
+        _styleDetail.Children.Clear();
+        _styleDetail.Children.Add(_settings.Style.Kind switch
+        {
+            BackgroundStyleKind.Solid => BuildSolidPicker(),
+            BackgroundStyleKind.Gradient => BuildGradientPicker(),
+            BackgroundStyleKind.Wallpaper => BuildWallpaperPicker(),
+            _ => new TextBlock
+            {
+                Text = "No background. Pick Color, Gradient, or Image.",
+                FontSize = 11,
+                Foreground = Brush("Sd.TextMuted"),
+                TextWrapping = TextWrapping.Wrap,
+            },
+        });
     }
 
-    private static StackPanel Section(string title)
+    private static StackPanel Section(string title, FrameworkElement? accessory = null)
     {
-        var section = new StackPanel { Margin = new Thickness(0, 0, 0, 16) };
-        section.Children.Add(new TextBlock
+        // The body is returned directly so builders can keep appending to it;
+        // Refresh() promotes it into a collapsible InspectorSection.
+        return new StackPanel { Tag = new SectionHeader(title, accessory) };
+    }
+
+    /// <summary>Marks a section body for promotion into a collapsible group.</summary>
+    private sealed record SectionHeader(string Title, FrameworkElement? Accessory);
+
+    /// <summary>
+    /// Wraps every tagged section body in a collapsible group, remembering
+    /// which ones the user folded away so a live rebuild does not spring them
+    /// all back open.
+    /// </summary>
+    private void PromoteSections()
+    {
+        for (int i = 0; i < _root.Children.Count; i++)
         {
-            Text = title,
-            FontSize = 11,
-            FontWeight = FontWeights.SemiBold,
-            Foreground = Brush("Sd.Text"),
-            Margin = new Thickness(0, 0, 0, 6),
-        });
-        return section;
+            if (_root.Children[i] is not StackPanel { Tag: SectionHeader header } body)
+            {
+                continue;
+            }
+
+            body.Tag = null;
+            var section = new InspectorSection(header.Title, body)
+            {
+                Margin = new Thickness(0, 0, 0, 10),
+                IsExpanded = !_collapsed.Contains(header.Title),
+                Accessory = header.Accessory,
+            };
+            section.ExpandedChanged += (_, _) =>
+            {
+                if (section.IsExpanded)
+                {
+                    _collapsed.Remove(header.Title);
+                }
+                else
+                {
+                    _collapsed.Add(header.Title);
+                }
+            };
+
+            _root.Children.RemoveAt(i);
+            _root.Children.Insert(i, section);
+        }
     }
 
     /// Small sub-heading inside a section (mac InspectorGroupLabel parity).
@@ -808,94 +974,11 @@ internal sealed class BackgroundInspector : UserControl
         double max,
         Func<double, string> format)
     {
-        // mac parity: label + track share one pill, value sits in a second pill.
-        var row = new Grid { Margin = new Thickness(0, 3, 0, 3) };
-        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-
-        var pill = new Border
+        return new PillSliderRow(label, get(), min, max, format, (value, _) =>
         {
-            Background = (Brush)Application.Current.Resources["Sd.Panel"],
-            BorderBrush = (Brush)Application.Current.Resources["Sd.Border"],
-            BorderThickness = new Thickness(1),
-            CornerRadius = new CornerRadius(15),
-            Height = 30,
-            Padding = new Thickness(12, 0, 10, 0),
-            VerticalAlignment = VerticalAlignment.Center,
-        };
-        var pillGrid = new Grid { VerticalAlignment = VerticalAlignment.Center };
-        pillGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        pillGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-
-        var name = new TextBlock
-        {
-            Text = label,
-            FontSize = 12,
-            FontWeight = FontWeights.SemiBold,
-            Foreground = new SolidColorBrush(Color.FromRgb(0x33, 0x33, 0x33)),
-            VerticalAlignment = VerticalAlignment.Center,
-            Margin = new Thickness(0, 0, 12, 0),
-        };
-        var slider = new Slider
-        {
-            Style = (Style)Application.Current.Resources["Sd.PillSlider"],
-            Minimum = min,
-            Maximum = max,
-            Value = Math.Clamp(get(), min, max),
-            SmallChange = (max - min) / 100,
-            LargeChange = (max - min) / 10,
-            VerticalAlignment = VerticalAlignment.Center,
-            IsMoveToPointEnabled = true,
-        };
-
-        var valuePill = new Border
-        {
-            Background = (Brush)Application.Current.Resources["Sd.Panel"],
-            BorderBrush = (Brush)Application.Current.Resources["Sd.Border"],
-            BorderThickness = new Thickness(1),
-            CornerRadius = new CornerRadius(15),
-            Height = 30,
-            MinWidth = 48,
-            Margin = new Thickness(6, 0, 0, 0),
-            Padding = new Thickness(8, 0, 8, 0),
-            VerticalAlignment = VerticalAlignment.Center,
-        };
-        var value = new TextBlock
-        {
-            Text = format(slider.Value),
-            FontSize = 12,
-            FontWeight = FontWeights.SemiBold,
-            Foreground = new SolidColorBrush(Color.FromRgb(0x33, 0x33, 0x33)),
-            VerticalAlignment = VerticalAlignment.Center,
-            HorizontalAlignment = HorizontalAlignment.Center,
-            TextAlignment = TextAlignment.Center,
-        };
-
-        slider.ValueChanged += (_, _) =>
-        {
-            if (_updating)
-            {
-                return;
-            }
-
-            value.Text = format(slider.Value);
-            set(slider.Value);
+            set(value);
             Apply();
-        };
-
-        Grid.SetColumn(name, 0);
-        Grid.SetColumn(slider, 1);
-        pillGrid.Children.Add(name);
-        pillGrid.Children.Add(slider);
-        pill.Child = pillGrid;
-
-        valuePill.Child = value;
-
-        Grid.SetColumn(pill, 0);
-        Grid.SetColumn(valuePill, 1);
-        row.Children.Add(pill);
-        row.Children.Add(valuePill);
-        return row;
+        });
     }
 
     private UIElement Picker(string label, string[] items, int selectedIndex, Action<int> onChanged)
@@ -963,7 +1046,7 @@ internal sealed class BackgroundInspector : UserControl
         var window = new Window
         {
             Title = title,
-            Width = 330,
+            Width = 340,
             SizeToContent = SizeToContent.Height,
             WindowStartupLocation = WindowStartupLocation.CenterOwner,
             ResizeMode = ResizeMode.NoResize,
@@ -971,30 +1054,31 @@ internal sealed class BackgroundInspector : UserControl
             Background = Brush("Sd.BgRaised"),
             Foreground = Brush("Sd.Text"),
         };
-        var box = new TextBox { Text = "My Background", Margin = new Thickness(0, 7, 0, 12) };
+        var box = new TextBox { Text = "My Background", Margin = new Thickness(0, 8, 0, 14) };
         box.SelectAll();
+        box.Focus();
         var save = new Button
         {
             Content = "Save",
             Style = (Style)Application.Current.Resources["Sd.AccentButton"],
             IsDefault = true,
-            Padding = new Thickness(18, 5, 18, 5),
+            Padding = new Thickness(18, 6, 18, 6),
         };
         var cancel = new Button
         {
             Content = "Cancel",
             Style = (Style)Application.Current.Resources["Sd.Button"],
             IsCancel = true,
-            Padding = new Thickness(18, 5, 18, 5),
-            Margin = new Thickness(6, 0, 0, 0),
+            Padding = new Thickness(18, 6, 18, 6),
+            Margin = new Thickness(8, 0, 0, 0),
         };
         string? result = null;
         save.Click += (_, _) => { result = box.Text; window.DialogResult = true; };
         var buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
         buttons.Children.Add(save);
         buttons.Children.Add(cancel);
-        var content = new StackPanel { Margin = new Thickness(16) };
-        content.Children.Add(new TextBlock { Text = label, FontSize = 12 });
+        var content = new StackPanel { Margin = new Thickness(18, 16, 18, 16) };
+        content.Children.Add(new TextBlock { Text = label, FontSize = 12, FontWeight = FontWeights.SemiBold });
         content.Children.Add(box);
         content.Children.Add(buttons);
         window.Content = content;
@@ -1035,21 +1119,26 @@ internal sealed class BackgroundInspector : UserControl
 
             var accent = ((SolidColorBrush)Application.Current.Resources["Sd.Accent"]).Color;
 
+            // A cool tinted field, the way the reference inspector tints the
+            // position pad so it reads as a canvas rather than a plain box.
             dc.DrawRoundedRectangle(
-                new SolidColorBrush(Color.FromRgb(0xF3, 0xF6, 0xF9)),
-                new Pen(new SolidColorBrush(Color.FromRgb(0xD9, 0xDF, 0xE7)), 1),
-                new Rect(0.5, 0.5, w - 1, h - 1), 6, 6);
+                new SolidColorBrush(Color.FromRgb(0xF0, 0xF5, 0xFD)),
+                new Pen(new SolidColorBrush(Color.FromRgb(0xDD, 0xE6, 0xF5)), 1),
+                new Rect(0.5, 0.5, w - 1, h - 1), 8, 8);
 
             var geometry = new ProgressiveBlurGeometry(
                 new RectD(0, 0, w, h), _settings, BlurCoordinateOrigin.TopLeft);
             var focus = new Point(geometry.Focus.X, geometry.Focus.Y);
 
-            var gridPen = new Pen(new SolidColorBrush(Color.FromArgb(28, 0x20, 0x2A, 0x36)), 1);
+            var gridPen = new Pen(new SolidColorBrush(Color.FromArgb(24, 0x20, 0x2A, 0x36)), 1);
             dc.DrawLine(gridPen, new Point(w / 2, 1), new Point(w / 2, h - 1));
             dc.DrawLine(gridPen, new Point(1, h / 2), new Point(w - 1, h / 2));
 
-            var regionFill = new SolidColorBrush(Color.FromArgb(30, accent.R, accent.G, accent.B));
-            var regionStroke = new Pen(new SolidColorBrush(Color.FromArgb(96, accent.R, accent.G, accent.B)), 1);
+            // The sharp region reads as a whisper of tint with a single thin
+            // accent edge - a ring, not a disc - so the pad stays legible and
+            // the boundary is the only thing that draws the eye.
+            var regionFill = new SolidColorBrush(Color.FromArgb(16, accent.R, accent.G, accent.B));
+            var regionStroke = new Pen(new SolidColorBrush(Color.FromArgb(120, accent.R, accent.G, accent.B)), 1);
             if (_settings.Mode == ProgressiveBlurMode.Radial)
             {
                 double radius = Math.Max(2, geometry.RadialFocusRadius);
@@ -1066,7 +1155,9 @@ internal sealed class BackgroundInspector : UserControl
                 dc.Pop();
             }
 
-            double thumbRadius = _dragging ? 6.5 : 5.5;
+            // A white seat under the thumb keeps it readable over the tint.
+            double thumbRadius = _dragging ? 6 : 5;
+            dc.DrawEllipse(Brushes.White, null, focus, thumbRadius + 1.2, thumbRadius + 1.2);
             dc.DrawEllipse(
                 new SolidColorBrush(accent),
                 new Pen(new SolidColorBrush(Color.FromArgb(235, 255, 255, 255)), 1.5),
