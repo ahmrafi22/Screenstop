@@ -82,7 +82,7 @@ public partial class App : Application
 
         // The capture preview card is the only surface that reports back; the
         // app raises no toasts or shell notifications of its own.
-        _preview = new PreviewPanelPresenter(DiscardNotification);
+        _preview = new PreviewPanelPresenter();
         _coordinator = new CaptureCoordinator(DiscardNotification, OnCaptureCompleted);
         _hotkeys = HotkeyService.Start(out var conflicts);
         _hotkeys.HotkeyPressed += _coordinator.HandleHotkey;
