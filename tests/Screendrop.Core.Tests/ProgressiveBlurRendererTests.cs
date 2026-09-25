@@ -42,6 +42,15 @@ public class ProgressiveBlurRendererTests
 
     private static SKColor Pixel(SKBitmap bitmap, int x, int y) => bitmap.GetPixel(x, y);
 
+    /// <summary>A fully opaque dark image, so any transparency is a bug.</summary>
+    private static SKBitmap SolidDarkOpaque(int width, int height)
+    {
+        var bitmap = new SKBitmap(new SKImageInfo(width, height, SKColorType.Bgra8888, SKAlphaType.Opaque));
+        using var canvas = new SKCanvas(bitmap);
+        canvas.Clear(new SKColor(40, 44, 52, 255));
+        return bitmap;
+    }
+
     [Fact]
     public void Blur_never_introduces_the_masks_white()
     {
@@ -84,6 +93,30 @@ public class ProgressiveBlurRendererTests
         Assert.True(
             centreContrast > edgeContrast,
             $"expected the focal area to stay sharper than the edge (centre={centreContrast:F1}, edge={edgeContrast:F1})");
+    }
+
+    [Fact]
+    public void Blur_keeps_the_corners_opaque()
+    {
+        // A blur averages in the transparent pixels just outside the source, so
+        // its own alpha falls off around the border. If that leaks through, the
+        // corners turn into a white halo over whatever is behind the card.
+        using var source = SolidDarkOpaque(300, 220);
+
+        using var result = ProgressiveBlurRenderer.Apply(source, Settings());
+
+        (int x, int y)[] corners =
+        {
+            (0, 0), (result.Width - 1, 0), (0, result.Height - 1),
+            (result.Width - 1, result.Height - 1),
+            (2, 2), (result.Width - 3, result.Height - 3),
+        };
+
+        foreach (var (x, y) in corners)
+        {
+            var p = Pixel(result, x, y);
+            Assert.True(p.Alpha == 255, $"corner ({x},{y}) lost opacity: {p}");
+        }
     }
 
     [Fact]

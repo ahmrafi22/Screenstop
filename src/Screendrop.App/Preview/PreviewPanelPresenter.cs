@@ -19,7 +19,10 @@ namespace Screendrop.App.Preview;
 
 internal sealed class PreviewPanelPresenter
 {
-    private readonly PreviewStack _stack = new(maxCount: 6);
+    // Only the newest capture is ever relevant. Capacity 1 means a new
+    // screenshot evicts the previous card, which routes through OnEvicted so
+    // the old staging file is still cleaned up.
+    private readonly PreviewStack _stack = new(maxCount: 1);
     private readonly CaptureCoordinator.NotifyHandler _notify;
     private readonly OverlayCardLayoutStore _layoutStore = new();
     private PreviewPanelWindow? _window;
@@ -147,7 +150,7 @@ internal sealed class PreviewPanelPresenter
 
         int widthPhys = (int)Math.Round(widthDip * scaleX);
         int heightPhys = (int)Math.Round(heightDip * scaleY);
-        var placement = PlacementResolver.ResolveBottomCorner(
+        var placement = PlacementResolver.ResolveTopCorner(
             monitor.PhysicalBounds, widthPhys, heightPhys, dockRight);
 
         _window.Width = placement.Width / scaleX;
@@ -228,29 +231,40 @@ internal sealed class PreviewPanelPresenter
 
     private void OnAction(PreviewEntry entry, CardAction action)
     {
-        switch (action)
+        try
         {
-            case CardAction.Save:
-                Save(entry);
-                break;
-            case CardAction.Copy:
-                Copy(entry);
-                break;
-            case CardAction.Compress:
-                CopyCompressed(entry);
-                break;
-            case CardAction.Annotate:
-                Edit(entry);
-                break;
-            case CardAction.View:
-                Reveal(entry);
-                break;
-            case CardAction.Delete:
-                Remove(entry);
-                break;
-            case CardAction.Close:
-                _window?.HidePanel();
-                break;
+            switch (action)
+            {
+                case CardAction.Save:
+                    Save(entry);
+                    break;
+                case CardAction.Copy:
+                    Copy(entry);
+                    break;
+                case CardAction.Compress:
+                    CopyCompressed(entry);
+                    break;
+                case CardAction.Annotate:
+                    Edit(entry);
+                    break;
+                case CardAction.View:
+                    Reveal(entry);
+                    break;
+                case CardAction.Delete:
+                    Remove(entry);
+                    break;
+                case CardAction.Close:
+                    break;
+            }
+        }
+        finally
+        {
+            // Any button means the user is done with this capture, so the
+            // preview gets out of the way. The entry stays in the stack (and
+            // its staging file on disk) because Annotate and View still need
+            // the file; the next capture evicts it and cleans up.
+            _autoCloseTimer?.Stop();
+            _window?.HidePanel();
         }
     }
 

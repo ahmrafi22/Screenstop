@@ -51,4 +51,30 @@ public static class PlacementResolver
 
         return new PixelRect(x, y, panelWidth, panelHeight);
     }
+
+    /// <summary>
+    /// Docks the panel to a top corner. The capture preview lives up here so it
+    /// never covers the bottom corner people keep their dock and taskbar in.
+    /// </summary>
+    public static PixelRect ResolveTopCorner(
+        PixelRect screenBounds, int panelWidth, int panelHeight, bool dockRight)
+    {
+        if (panelWidth <= 0 || panelHeight <= 0)
+        {
+            return new PixelRect(screenBounds.X, screenBounds.Y, 0, 0);
+        }
+
+        int x = dockRight
+            ? screenBounds.Right - panelWidth - SideMargin
+            : screenBounds.X + SideMargin;
+        x = Math.Clamp(x, screenBounds.X, Math.Max(screenBounds.X, screenBounds.Right - panelWidth));
+
+        int y = screenBounds.Y + BottomMargin;
+        if (y + panelHeight > screenBounds.Bottom)
+        {
+            y = Math.Max(screenBounds.Y, screenBounds.Bottom - panelHeight);
+        }
+
+        return new PixelRect(x, y, panelWidth, panelHeight);
+    }
 }
