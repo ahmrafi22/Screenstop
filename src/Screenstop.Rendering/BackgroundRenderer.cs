@@ -408,6 +408,17 @@ public static class BackgroundRenderer
     /// inside it stays exact. Magnification never widens this - the source is
     /// the input, the projected quad is the destination - so the card's own
     /// spill is all that has to be covered.
+    ///
+    /// The spill must cover the blur's true reach. DrawShadow passes
+    /// <see cref="ShadowLayer.Radius"/> to SKMaskFilter as a *sigma*, and a
+    /// Gaussian is still carrying roughly 1% of its amplitude at 3 sigma.
+    /// Reserving less than that slices the shadow's outer tail off at the
+    /// surface's rectangular edge, which the camera then warps into a straight
+    /// line across the backdrop. It only shows up with a camera because the
+    /// flat path draws the shadow straight onto the canvas, where there is no
+    /// surface edge to clip against.
+    private const double ShadowSpillSigma = 3.2;
+
     private static RectD CardSourceBounds(
         RectD caster,
         BackgroundSettings settings,
@@ -423,11 +434,9 @@ public static class BackgroundRenderer
 
         var spill = settings.ShadowStyle.Layer(
             settings.Shadow, Math.Min(caster.Width, caster.Height)) is { } layer
-            ? (layer.Radius * 2.5) + Math.Abs(layer.YOffset)
+            ? (layer.Radius * ShadowSpillSigma) + Math.Abs(layer.YOffset)
             : 0;
 
-        // The blur is soft, so the outermost falloff can end at the surface
-        // edge without a visible seam.
         var bounds = Intersect(caster.Inset(-(spill + radius + 2), -(spill + radius + 2)), canvasRect);
 
         double x = Math.Round(bounds.MinX);
