@@ -33,6 +33,8 @@ internal sealed class PreviewPanelWindow : Window
     private readonly StackPanel _cardsPanel;
     private readonly Border _peekPill;
     private readonly TextBlock _peekText;
+    private readonly Border _errorBanner;
+    private readonly TextBlock _errorText;
     private int _previousCardCount;
     private bool _collapsed;
 
@@ -72,6 +74,26 @@ internal sealed class PreviewPanelWindow : Window
         };
         _peekPill.MouseLeftButtonUp += (_, _) => SetCollapsed(false);
 
+        _errorText = new TextBlock
+        {
+            Foreground = Brushes.White,
+            FontSize = 11,
+            FontWeight = FontWeights.SemiBold,
+            TextWrapping = TextWrapping.Wrap,
+            TextTrimming = TextTrimming.CharacterEllipsis,
+        };
+        _errorBanner = new Border
+        {
+            Background = new SolidColorBrush(Color.FromArgb(240, 176, 32, 32)),
+            CornerRadius = new CornerRadius(8),
+            Padding = new Thickness(10, 6, 10, 6),
+            Margin = new Thickness(0, 0, 0, 6),
+            Visibility = Visibility.Collapsed,
+            Opacity = 0,
+            IsHitTestVisible = false,
+            Child = _errorText,
+        };
+
         var root = new Grid();
         root.Children.Add(_cardsPanel);
         root.Children.Add(new StackPanel
@@ -79,6 +101,12 @@ internal sealed class PreviewPanelWindow : Window
             VerticalAlignment = VerticalAlignment.Bottom,
             HorizontalAlignment = HorizontalAlignment.Right,
             Children = { _peekPill },
+        });
+        root.Children.Add(new StackPanel
+        {
+            VerticalAlignment = VerticalAlignment.Top,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            Children = { _errorBanner },
         });
         Content = root;
     }
@@ -115,6 +143,34 @@ internal sealed class PreviewPanelWindow : Window
     public void SetPeekCount(int count)
     {
         _peekText.Text = count == 1 ? "1 screenshot" : $"{count} screenshots";
+    }
+
+    /// <summary>
+    /// Reports a failed action on the card itself. The app no longer raises
+    /// toasts, so without this a failed save would look exactly like a card
+    /// that quietly vanished.
+    /// </summary>
+    public void ShowError(string message)
+    {
+        if (_errorBanner is null)
+        {
+            return;
+        }
+
+        _errorText.Text = message;
+        _errorBanner.Visibility = Visibility.Visible;
+        _errorBanner.Opacity = 1;
+        _errorBanner.BeginAnimation(OpacityProperty, null);
+    }
+
+    public void ClearError()
+    {
+        _errorBanner?.BeginAnimation(OpacityProperty, null);
+        if (_errorBanner is not null)
+        {
+            _errorBanner.Opacity = 0;
+            _errorBanner.Visibility = Visibility.Collapsed;
+        }
     }
 
     public void SetCards(
@@ -167,10 +223,13 @@ internal sealed class PreviewPanelWindow : Window
         OverlayCardLayout layout,
         bool dockRight)
     {
+        // The card is a fixed 4:3 while captures are usually 16:9, so filling
+        // would crop the capture's edges off. Fit the whole thing instead and
+        // let the backdrop carry the letterbox.
         var image = new Image
         {
             Source = thumbnail,
-            Stretch = Stretch.UniformToFill,
+            Stretch = Stretch.Uniform,
         };
 
         var hoverOverlay = BuildHoverOverlay(entry, thumbnail, layout);
@@ -178,6 +237,11 @@ internal sealed class PreviewPanelWindow : Window
         hoverOverlay.Visibility = Visibility.Collapsed;
 
         var content = new Grid();
+        content.Children.Add(new System.Windows.Shapes.Rectangle
+        {
+            Fill = new SolidColorBrush(Color.FromArgb(72, 0, 0, 0)),
+            IsHitTestVisible = false,
+        });
         content.Children.Add(image);
         content.Children.Add(hoverOverlay);
 
@@ -251,6 +315,7 @@ internal sealed class PreviewPanelWindow : Window
                 RenderTransformOrigin = new Point(0.5, 0.5),
                 IsHitTestVisible = false,
             });
+
         }
 
         overlay.Children.Add(new System.Windows.Shapes.Rectangle
@@ -296,9 +361,9 @@ internal sealed class PreviewPanelWindow : Window
 
         var button = new Button
         {
-            Width = 22,
-            Height = 22,
-            Margin = new Thickness(9),
+            Width = 26,
+            Height = 26,
+            Margin = new Thickness(10),
             HorizontalAlignment = horizontal,
             VerticalAlignment = vertical,
             ToolTip = action.Value.Help(),
@@ -309,7 +374,7 @@ internal sealed class PreviewPanelWindow : Window
             {
                 Text = action.Value.Glyph(),
                 FontFamily = IconTypeface.FontFamily,
-                FontSize = 10,
+                FontSize = 11,
                 FontWeight = FontWeights.Bold,
                 Foreground = Brushes.Black,
                 HorizontalAlignment = HorizontalAlignment.Center,
@@ -326,16 +391,22 @@ internal sealed class PreviewPanelWindow : Window
 
     private static ControlTemplate CornerButtonTemplate()
     {
+        // Frosted chip rather than a flat white disc: a translucent fill over
+        // the screenshot, a hairline edge, and an accent wash on hover so the
+        // action reads as live before you commit to the click.
         var template = new ControlTemplate(typeof(Button));
         var border = new FrameworkElementFactory(typeof(Border));
-        border.SetValue(Border.BackgroundProperty, Brushes.White);
-        border.SetValue(Border.CornerRadiusProperty, new CornerRadius(11));
+        border.Name = "PART_Chrome";
+        border.SetValue(Border.BackgroundProperty, new SolidColorBrush(Color.FromArgb(232, 255, 255, 255)));
+        border.SetValue(Border.CornerRadiusProperty, new CornerRadius(8));
+        border.SetValue(Border.BorderThicknessProperty, new Thickness(1));
+        border.SetValue(Border.BorderBrushProperty, new SolidColorBrush(Color.FromArgb(38, 0, 0, 0)));
         border.SetValue(Border.EffectProperty, new DropShadowEffect
         {
             Color = Colors.Black,
-            Opacity = 0.22,
-            BlurRadius = 3,
-            ShadowDepth = 1,
+            Opacity = 0.24,
+            BlurRadius = 6,
+            ShadowDepth = 2,
             Direction = 270,
         });
         var presenter = new FrameworkElementFactory(typeof(ContentPresenter));
@@ -344,17 +415,22 @@ internal sealed class PreviewPanelWindow : Window
         border.AppendChild(presenter);
         template.VisualTree = border;
 
-        template.Triggers.Add(new Trigger
+        var hover = new Trigger
         {
             Property = IsMouseOverProperty,
             Value = true,
-            Setters = { new Setter(UIElement.OpacityProperty, 0.85) },
-        });
+        };
+        hover.Setters.Add(new Setter(
+            Border.BackgroundProperty, new SolidColorBrush(Color.FromArgb(255, 255, 255, 255)), "PART_Chrome"));
+        hover.Setters.Add(new Setter(
+            Border.BorderBrushProperty, new SolidColorBrush(Color.FromArgb(120, 0, 0, 0)), "PART_Chrome"));
+        template.Triggers.Add(hover);
+
         template.Triggers.Add(new Trigger
         {
             Property = ButtonBase.IsPressedProperty,
             Value = true,
-            Setters = { new Setter(UIElement.OpacityProperty, 0.7) },
+            Setters = { new Setter(UIElement.OpacityProperty, 0.75) },
         });
         return template;
     }
@@ -388,17 +464,23 @@ internal sealed class PreviewPanelWindow : Window
 
     private static ControlTemplate PillTemplate()
     {
+        // The primary action row. Frosted fill over the screenshot, a hairline
+        // edge, and a full-white lift on hover so the pill reads as the
+        // thing you are meant to press.
         var template = new ControlTemplate(typeof(Button));
         var border = new FrameworkElementFactory(typeof(Border));
-        border.SetValue(Border.BackgroundProperty, new SolidColorBrush(Color.FromArgb(217, 255, 255, 255)));
-        border.SetValue(Border.CornerRadiusProperty, new CornerRadius(12));
-        border.SetValue(Border.PaddingProperty, new Thickness(13, 6, 13, 6));
+        border.Name = "PART_Chrome";
+        border.SetValue(Border.BackgroundProperty, new SolidColorBrush(Color.FromArgb(228, 255, 255, 255)));
+        border.SetValue(Border.CornerRadiusProperty, new CornerRadius(10));
+        border.SetValue(Border.BorderThicknessProperty, new Thickness(1));
+        border.SetValue(Border.BorderBrushProperty, new SolidColorBrush(Color.FromArgb(34, 0, 0, 0)));
+        border.SetValue(Border.PaddingProperty, new Thickness(15, 7, 15, 7));
         border.SetValue(Border.EffectProperty, new DropShadowEffect
         {
             Color = Colors.Black,
-            Opacity = 0.22,
-            BlurRadius = 3,
-            ShadowDepth = 1,
+            Opacity = 0.24,
+            BlurRadius = 7,
+            ShadowDepth = 2,
             Direction = 270,
         });
         var presenter = new FrameworkElementFactory(typeof(ContentPresenter));
@@ -407,17 +489,22 @@ internal sealed class PreviewPanelWindow : Window
         border.AppendChild(presenter);
         template.VisualTree = border;
 
-        template.Triggers.Add(new Trigger
+        var hover = new Trigger
         {
             Property = IsMouseOverProperty,
             Value = true,
-            Setters = { new Setter(UIElement.OpacityProperty, 0.88) },
-        });
+        };
+        hover.Setters.Add(new Setter(
+            Border.BackgroundProperty, Brushes.White, "PART_Chrome"));
+        hover.Setters.Add(new Setter(
+            Border.BorderBrushProperty, new SolidColorBrush(Color.FromArgb(110, 0, 0, 0)), "PART_Chrome"));
+        template.Triggers.Add(hover);
+
         template.Triggers.Add(new Trigger
         {
             Property = ButtonBase.IsPressedProperty,
             Value = true,
-            Setters = { new Setter(UIElement.OpacityProperty, 0.72) },
+            Setters = { new Setter(UIElement.OpacityProperty, 0.78) },
         });
         return template;
     }

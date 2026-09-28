@@ -80,16 +80,26 @@ public partial class App : Application
             OpenScreenshotsFolder: OpenScreenshotsFolder));
         _tray.SetVisible(initialSettings.ShowTrayIcon);
 
-        _preview = new PreviewPanelPresenter(_tray.Notify);
-        _coordinator = new CaptureCoordinator(_tray.Notify, OnCaptureCompleted);
+        // The capture preview card is the only surface that reports back; the
+        // app raises no toasts or shell notifications of its own.
+        _preview = new PreviewPanelPresenter();
+        _coordinator = new CaptureCoordinator(DiscardNotification, OnCaptureCompleted);
         _hotkeys = HotkeyService.Start(out var conflicts);
         _hotkeys.HotkeyPressed += _coordinator.HandleHotkey;
 
         if (conflicts.Count > 0)
         {
             string combos = string.Join(", ", conflicts.Select(HotkeyService.Describe));
-            _tray.Notify("Hotkey conflict", $"{combos} could not be registered and are ignored.");
+            DiscardNotification("Hotkey conflict", $"{combos} could not be registered and are ignored.");
         }
+    }
+
+    /// <summary>
+    /// Notification sink. The preview card communicates every outcome the user
+    /// needs, so nothing is announced separately.
+    /// </summary>
+    private static void DiscardNotification(string title, string message, string? thumbnailPath = null)
+    {
     }
 
     private void OnCaptureCompleted(AfterCaptureResult result, string captureType)
@@ -219,7 +229,7 @@ public partial class App : Application
             if (conflicts.Count > 0)
             {
                 string combos = string.Join(", ", conflicts.Select(HotkeyService.Describe));
-                _tray?.Notify("Hotkey conflict", $"{combos} could not be registered and are ignored.");
+                DiscardNotification("Hotkey conflict", $"{combos} could not be registered and are ignored.");
             }
         }
     }

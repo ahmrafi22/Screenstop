@@ -26,7 +26,10 @@ internal sealed class HotkeyRecorderBox : TextBox
         Cursor = Cursors.Hand;
         Text = defaultCombo;
         MinWidth = 140;
-        Padding = new Thickness(4, 2, 4, 2);
+        // The combo is a code, so it reads in the same tabular mono face as every
+        // other value field in the app.
+        FontFamily = (FontFamily)Application.Current.Resources["Sd.MonoFont"];
+        FontWeight = FontWeights.SemiBold;
         VerticalContentAlignment = VerticalAlignment.Center;
         TextAlignment = TextAlignment.Center;
     }
@@ -41,7 +44,7 @@ internal sealed class HotkeyRecorderBox : TextBox
         base.OnGotKeyboardFocus(e);
         _recording = true;
         _textBeforeRecording = Text;
-        Background = new SolidColorBrush(Color.FromRgb(0xE8, 0xF0, 0xFE));
+        // The shared field template already paints the accent focus ring.
         Text = "Press a shortcut…";
     }
 
@@ -125,7 +128,6 @@ internal sealed class HotkeyRecorderBox : TextBox
         }
 
         _recording = false;
-        Background = Brushes.Transparent;
 
         // Focus left without a valid combo (e.g. the user clicked Save
         // mid-recording): restore the previous value instead of leaving the

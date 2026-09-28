@@ -19,16 +19,17 @@ namespace Screenstop.App.Preview;
 
 internal sealed class PreviewPanelPresenter
 {
-    private readonly PreviewStack _stack = new(maxCount: 6);
-    private readonly CaptureCoordinator.NotifyHandler _notify;
+    // Only the newest capture is ever relevant. Capacity 1 means a new
+    // screenshot evicts the previous card, which routes through OnEvicted so
+    // the old staging file is still cleaned up.
+    private readonly PreviewStack _stack = new(maxCount: 1);
     private readonly OverlayCardLayoutStore _layoutStore = new();
     private PreviewPanelWindow? _window;
     private MonitorInfo? _targetMonitor;
     private DispatcherTimer? _autoCloseTimer;
 
-    public PreviewPanelPresenter(CaptureCoordinator.NotifyHandler notify)
+    public PreviewPanelPresenter()
     {
-        _notify = notify;
         _stack.Evicted += OnEvicted;
     }
 
@@ -147,7 +148,7 @@ internal sealed class PreviewPanelPresenter
 
         int widthPhys = (int)Math.Round(widthDip * scaleX);
         int heightPhys = (int)Math.Round(heightDip * scaleY);
-        var placement = PlacementResolver.ResolveBottomCorner(
+        var placement = PlacementResolver.ResolveTopCorner(
             monitor.PhysicalBounds, widthPhys, heightPhys, dockRight);
 
         _window.Width = placement.Width / scaleX;
@@ -228,6 +229,8 @@ internal sealed class PreviewPanelPresenter
 
     private void OnAction(PreviewEntry entry, CardAction action)
     {
+        _window?.ClearError();
+
         switch (action)
         {
             case CardAction.Save:
@@ -241,25 +244,51 @@ internal sealed class PreviewPanelPresenter
                 break;
             case CardAction.Annotate:
                 Edit(entry);
+                DismissPreview();
                 break;
             case CardAction.View:
                 Reveal(entry);
+                DismissPreview();
                 break;
             case CardAction.Delete:
                 Remove(entry);
                 break;
             case CardAction.Close:
-                _window?.HidePanel();
+                DismissPreview();
                 break;
         }
+    }
+
+    /// <summary>
+    /// Hides the card once the user is done with a capture. The entry stays in
+    /// the stack (and its staging file on disk) because Annotate and View still
+    /// need the file; the next capture evicts it and cleans up.
+    /// </summary>
+    private void DismissPreview()
+    {
+        _autoCloseTimer?.Stop();
+        _window?.ClearError();
+        _window?.HidePanel();
+    }
+
+    /// <summary>
+    /// Reports a failure on the card. The app raises no toasts, and silently
+    /// keeping the card up would be indistinguishable from the action simply
+    /// doing nothing.
+    /// </summary>
+    private void ReportFailure(string message)
+    {
+        TraceLog.Write($"preview action failed: {message}");
+        _window?.ShowError(message);
     }
 
     private void Save(PreviewEntry entry)
     {
         if (entry.SavedPath is not null)
         {
-            _notify("Screenshot", "Already saved.");
+            TraceLog.Write("panel: save button on an already-saved capture");
             Remove(entry);
+            DismissPreview();
             return;
         }
 
@@ -296,13 +325,14 @@ internal sealed class PreviewPanelPresenter
                     : JpegCompressor.EncodePng(bitmap);
                 File.WriteAllBytes(path, bytes);
 
-                Notify("Saved", Path.GetFileName(path));
+                TraceLog.Write($"panel: saved {path}");
                 Remove(entry);
+                DismissPreview();
             }
             catch (Exception ex)
             {
                 // Mac parity: a failed save keeps the card so the user can retry.
-                Notify("Save failed", ex.Message);
+                ReportFailure($"Save failed: {ex.Message}");
             }
         });
     }
@@ -341,12 +371,13 @@ internal sealed class PreviewPanelPresenter
                     : JpegCompressor.EncodePng(bitmap);
                 File.WriteAllBytes(destination, bytes);
 
-                Notify("Saved", Path.GetFileName(destination));
+                TraceLog.Write($"panel: saved {destination}");
                 Remove(entry);
+                DismissPreview();
             }
             catch (Exception ex)
             {
-                Notify("Save failed", ex.Message);
+                ReportFailure($"Save failed: {ex.Message}");
             }
         });
     }
@@ -365,13 +396,14 @@ internal sealed class PreviewPanelPresenter
                 }
 
                 ClipboardService.SetImage(bitmap);
-                Notify("Copied to clipboard", string.Empty);
+                TraceLog.Write("panel: copied to clipboard");
                 Remove(entry);
+                DismissPreview();
             }
             catch (Exception ex)
             {
                 // Mac parity: a failed copy keeps the card so the user can retry.
-                Notify("Copy failed", ex.Message);
+                ReportFailure($"Copy failed: {ex.Message}");
             }
         });
     }
@@ -404,11 +436,12 @@ internal sealed class PreviewPanelPresenter
                     ClipboardService.SetImage(copy);
                 }
 
-                Notify("Compressed JPG copied", string.Empty);
+                TraceLog.Write("panel: copied compressed JPG");
+                DismissPreview();
             }
             catch (Exception ex)
             {
-                Notify("Compress failed", ex.Message);
+                ReportFailure($"Compress failed: {ex.Message}");
             }
         });
     }
@@ -434,7 +467,7 @@ internal sealed class PreviewPanelPresenter
         string imagePath = entry.ImagePath;
         if (!File.Exists(imagePath))
         {
-            _notify("Screenstop", "The image file is missing.");
+            ReportFailure("The image file is missing.");
             return;
         }
 
@@ -443,7 +476,7 @@ internal sealed class PreviewPanelPresenter
         {
             // Edits live in the sidecar now; refresh so the card shows them.
             Refresh();
-            _notify("Annotated", Path.GetFileName(imagePath));
+            TraceLog.Write($"panel: annotations saved for {imagePath}");
         };
         editor.Show();
     }
@@ -509,8 +542,4 @@ internal sealed class PreviewPanelPresenter
         }
     }
 
-    private void Notify(string title, string message)
-    {
-        _notify(title, message);
-    }
 }
