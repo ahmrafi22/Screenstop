@@ -5,6 +5,7 @@ using System.Windows.Controls.Primitives;
 using System.Windows.Data;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Threading;
 using Screenstop.Core.Annotations;
 using Screenstop.Rendering;
 using SkiaSharp;
@@ -405,7 +406,7 @@ internal sealed class AnnotationEditorWindow : Window
         {
             Style = (Style)FindAppResource("Sd.AccentButton"),
             Content = stack,
-            ToolTip = "Save edits to the sidecar (Ctrl+S)",
+            ToolTip = "Save edits to the sidecar and keep editing (Ctrl+S). Use Export… to write a PNG.",
             Padding = new Thickness(14, 5, 14, 5),
             FontWeight = FontWeights.SemiBold,
             Margin = new Thickness(8, 0, 0, 0),
@@ -427,12 +428,33 @@ internal sealed class AnnotationEditorWindow : Window
         {
             _canvas.ToDocument().Save(_sourcePath);
             Saved?.Invoke(_sourcePath);
-            Close();
+            FlashHint("Edits saved · this window stays open so you can still export");
         }
         catch (Exception ex)
         {
             MessageBox.Show(this, $"Could not save the edits: {ex.Message}", "Screenstop", MessageBoxButton.OK, MessageBoxImage.Warning);
         }
+    }
+
+    /// Shows a message in the hint bar, then hands the bar back to whatever is
+    /// driving it (tool hint or crop prompt). Saved used to close the window,
+    /// which was the only feedback it gave; staying open needs its own.
+    private void FlashHint(string message)
+    {
+        _hintLabel.Text = message;
+
+        var reset = new DispatcherTimer
+        {
+            Interval = TimeSpan.FromSeconds(3),
+        };
+        reset.Tick += (_, _) =>
+        {
+            reset.Stop();
+            _hintLabel.Text = _pendingCrop is not null || _canvas.IsCropping
+                ? "Drag over the area to keep · Esc cancels"
+                : HintFor(_canvas.ActiveTool);
+        };
+        reset.Start();
     }
 
     /// Exports a flattened copy (image + annotations baked in) to a location
@@ -469,7 +491,7 @@ internal sealed class AnnotationEditorWindow : Window
             _canvas.ToDocument().Save(dialog.FileName);
 
             Saved?.Invoke(dialog.FileName);
-            Close();
+            FlashHint($"Exported to {Path.GetFileName(dialog.FileName)}");
         }
         catch (Exception ex)
         {

@@ -86,7 +86,92 @@ public sealed record BackgroundLayout(SizeD CanvasSize, RectD CardRect, RectD Im
         var cardRect = new RectD(originX, originY, cardSize.Width, cardSize.Height);
         var imageRect = cardRect.Inset(borderThickness, borderThickness);
 
+        return FitCamera(
+            new BackgroundLayout(canvasSize, cardRect, imageRect, padding),
+            padding,
+            borderThickness,
+            settings);
+    }
+
+    /// Grows the stage so a camera transform cannot push the screenshot's own
+    /// frame off the export.
+    ///
+    /// Without this the stage is sized from the flat card alone, so zooming in
+    /// magnifies the card straight through the canvas edge and the border ring,
+    /// rounded corners, and drop shadow are cropped away - the frame is what
+    /// makes the screenshot read as a placed object, and it silently disappears
+    /// at exactly the camera angles the user is dialling in.
+    ///
+    /// Only the projected extent drives the growth. Pan is left alone on
+    /// purpose: it is an explicit artistic offset measured against the stage,
+    /// so a card the user has deliberately pushed to one side is allowed to run
+    /// off the edge. Growing to chase it would chase its own tail, since the
+    /// offset is a fraction of the very stage being widened.
+    private static BackgroundLayout FitCamera(
+        BackgroundLayout layout,
+        double padding,
+        double borderThickness,
+        BackgroundSettings settings)
+    {
+        if (!settings.Camera.HasEffect || layout.CanvasSize.Width <= 0 || layout.CanvasSize.Height <= 0)
+        {
+            return layout;
+        }
+
+        double shadow = settings.ShadowStyle.Layer(
+            settings.Shadow,
+            Math.Min(layout.CardRect.Width, layout.CardRect.Height)) is { } layer
+            ? layer.Radius + Math.Abs(layer.YOffset)
+            : 0;
+
+        // The flat stage already reserves `padding` around the card, so the
+        // breathing room a projected card needs is whichever is larger.
+        double breathing = Math.Max(padding, shadow);
+        var cardRect = layout.CardRect;
+        var imageRect = layout.ImageRect;
+        var canvasSize = layout.CanvasSize;
+
+        // The camera orbits the card's centre, so recentring the card on a
+        // wider stage keeps the framing. Two passes settle the loop, because
+        // moving the orbit centre slightly changes the projected span.
+        for (int pass = 0; pass < 2; pass++)
+        {
+            var projected = CameraGeometry.Projection(cardRect, imageRect, canvasSize, settings.Camera);
+            var span = SpanOf(projected.Quad);
+            double requiredW = span.Width + (breathing * 2);
+            double requiredH = span.Height + (breathing * 2);
+
+            bool growW = requiredW > canvasSize.Width;
+            bool growH = requiredH > canvasSize.Height;
+            if (!growW && !growH)
+            {
+                break;
+            }
+
+            canvasSize = new SizeD(
+                growW ? Math.Ceiling(requiredW) : canvasSize.Width,
+                growH ? Math.Ceiling(requiredH) : canvasSize.Height);
+
+            // Snapping to whole pixels keeps the export's 1:1 screenshot draw exact.
+            cardRect = new RectD(
+                Math.Round((canvasSize.Width - cardRect.Width) / 2),
+                Math.Round((canvasSize.Height - cardRect.Height) / 2),
+                cardRect.Width,
+                cardRect.Height);
+            imageRect = cardRect.Inset(borderThickness, borderThickness);
+        }
+
         return new BackgroundLayout(canvasSize, cardRect, imageRect, padding);
+    }
+
+    private static (double Width, double Height) SpanOf(CameraQuad quad)
+    {
+        var points = quad.Points;
+        double minX = points.Min(p => p.X);
+        double minY = points.Min(p => p.Y);
+        double maxX = points.Max(p => p.X);
+        double maxY = points.Max(p => p.Y);
+        return (maxX - minX, maxY - minY);
     }
 
     private static SizeD ExpandedSize(SizeD size, double? aspectRatio)

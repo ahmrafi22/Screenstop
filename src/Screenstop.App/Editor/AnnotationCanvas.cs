@@ -29,6 +29,19 @@ internal sealed class AnnotationCanvas : SKElement
     private int _previewWidth;
     private int _previewHeight;
 
+    // Rect the preview texture was last drawn into. The texture is sized for
+    // the whole projected card, which is normally larger than the rect it lands
+    // in, so annotations are drawn in texture space and mapped by this.
+    private double _previewDrawWidth;
+    private double _previewDrawHeight;
+
+    // Flat card composition, reused across frames and only resized when the
+    // card's own bounds change.
+    private SKSurface? _cardSurface;
+    private RectD _cardBounds;
+    private int _cardSurfaceWidth;
+    private int _cardSurfaceHeight;
+
     // Cached live progressive-blur preview (clipped mode). Recomputed only when
     // the blur settings or the preview size change, not on every annotation edit.
     private SKImage? _blurredPreview;
@@ -397,23 +410,30 @@ internal sealed class AnnotationCanvas : SKElement
     private void PaintPlain(SKCanvas canvas)
     {
         EnsurePreviewImage(
-            Math.Max(1, (int)Math.Round(_viewport.DisplayWidth)),
-            Math.Max(1, (int)Math.Round(_viewport.DisplayHeight)));
+            QuantizeTextureSize((int)Math.Ceiling(_viewport.DisplayWidth)),
+            QuantizeTextureSize((int)Math.Ceiling(_viewport.DisplayHeight)));
         if (_previewImage is null)
         {
             return;
         }
 
         canvas.Translate((float)_viewport.OffsetX, (float)_viewport.OffsetY);
-        canvas.DrawImage(_previewImage, 0, 0);
+        _previewDrawWidth = _viewport.DisplayWidth;
+        _previewDrawHeight = _viewport.DisplayHeight;
 
-        var annotations = new List<Annotation>(Model.Annotations);
-        if (_draft is not null)
+        // Draw into the exact viewport rather than 1:1 from a rounded texture
+        // size, which otherwise leaves a sub-pixel gap down the right and
+        // bottom edges that shifts as the window is resized.
+        using (var imagePaint = new SKPaint { FilterQuality = SKFilterQuality.High, IsAntialias = true })
         {
-            annotations.Add(_draft);
+            canvas.DrawImage(
+                _previewImage,
+                SKRect.Create(0, 0, (float)_viewport.DisplayWidth, (float)_viewport.DisplayHeight),
+                imagePaint);
         }
 
-        AnnotationRenderer.Draw(canvas, _previewImage, annotations, _previewWidth, _previewHeight);
+        ScaleToPreviewSpace(canvas);
+        DrawAnnotations(canvas, _previewImage);
 
         var imageFrame = new RectD(0, 0, _viewport.DisplayWidth, _viewport.DisplayHeight);
         DrawCropOverlay(canvas, imageFrame);
@@ -430,9 +450,15 @@ internal sealed class AnnotationCanvas : SKElement
             return;
         }
 
+        // The texture has to cover the card as it lands on screen, not the flat
+        // frame it starts from. Sizing it to the flat frame leaves a magnified
+        // card - anything past 1x on the zoom slider - sampling an undersized
+        // texture, and the 1px anti-aliased border is the first thing to break,
+        // crawling from frame to frame as the slider moves.
+        var texture = cameraLive ? ProjectedBounds(imageFrame, projection) : imageFrame;
         EnsurePreviewImage(
-            Math.Max(1, (int)Math.Round(imageFrame.Width)),
-            Math.Max(1, (int)Math.Round(imageFrame.Height)));
+            QuantizeTextureSize((int)Math.Ceiling(texture.Width)),
+            QuantizeTextureSize((int)Math.Ceiling(texture.Height)));
         if (_previewImage is null)
         {
             return;
@@ -446,7 +472,6 @@ internal sealed class AnnotationCanvas : SKElement
         }
 
         var frameGeometry = new FrameGeometry(imageFrame, cardFrame, bg);
-        bool castsShadow = bg.IsEnabled || cameraLive;
 
         // Live focus-blur feedback in both edge modes: the screenshot is blurred
         // with the sharp focal area so the focus pad responds visibly. (Bleed
@@ -456,39 +481,26 @@ internal sealed class AnnotationCanvas : SKElement
             ? EnsureBlurredPreview(bg.ProgressiveBlur) ?? _previewImage
             : _previewImage;
 
-        var matrix = BackgroundRenderer.ToSKMatrix(projection.Forward);
-        canvas.Save();
-        canvas.Concat(ref matrix);
+        // Compose the card flat, then warp it once - the same order the export
+        // uses. Drawing the card directly under the perspective matrix is what
+        // made a transformed card look rough: Skia degrades antialiased
+        // clipping and path rendering once a matrix is projective, so the ring
+        // and the screenshot's edge came out jagged even though the exported
+        // file was clean. Going through the shared compositor also guarantees
+        // the preview and the export cannot drift apart.
+        _previewDrawWidth = imageFrame.Width;
+        _previewDrawHeight = imageFrame.Height;
 
-        BackgroundRenderer.DrawCardBacking(canvas, bg, frameGeometry, castsShadow);
-
-        canvas.Save();
-        canvas.ClipPath(SkiaGeometry.PerCornerPath(imageFrame, frameGeometry.ImageCornerRadii), antialias: true);
-        canvas.Translate((float)imageFrame.X, (float)imageFrame.Y);
-
-        // High-quality sampling so the camera projection stays smooth when it
-        // magnifies the card beyond the preview texture resolution.
-        using var imagePaint = new SKPaint { FilterQuality = SKFilterQuality.High };
-        canvas.DrawImage(
-            baseImage,
-            SKRect.Create(0, 0, (float)imageFrame.Width, (float)imageFrame.Height),
-            imagePaint);
-
-        var annotations = new List<Annotation>(Model.Annotations);
-        if (_draft is not null)
+        if (ComposeCard(baseImage, bg, frameGeometry, imageFrame, canvasFrame))
         {
-            annotations.Add(_draft);
+            using var image = _cardSurface!.Snapshot();
+            BackgroundRenderer.DrawWarpedCard(canvas, image, _cardBounds, projection);
         }
-
-        AnnotationRenderer.Draw(canvas, _previewImage, annotations, _previewWidth, _previewHeight);
-        canvas.Restore();
 
         if (!IsCropping)
         {
             DrawSelection(canvas, imageFrame);
         }
-
-        canvas.Restore();
 
         if (bg.Watermark.IsVisible)
         {
@@ -496,6 +508,101 @@ internal sealed class AnnotationCanvas : SKElement
         }
 
         DrawCropOverlay(canvas, imageFrame);
+    }
+
+    /// Composites ring + screenshot + annotations flat into a surface that is
+    /// reused across frames, so dragging a camera slider does not reallocate
+    /// one every tick. The surface is fully overwritten each time by
+    /// <see cref="BackgroundRenderer.ComposeCard"/>.
+    private bool ComposeCard(
+        SKImage baseImage,
+        BackgroundSettings bg,
+        FrameGeometry frameGeometry,
+        RectD imageFrame,
+        RectD canvasFrame)
+    {
+        if (baseImage is null)
+        {
+            return false;
+        }
+
+        var bounds = BackgroundRenderer.CardBounds(bg, frameGeometry, canvasFrame);
+        int width = Math.Max(1, (int)Math.Round(bounds.Width));
+        int height = Math.Max(1, (int)Math.Round(bounds.Height));
+
+        if (_cardSurface is null || _cardSurfaceWidth != width || _cardSurfaceHeight != height)
+        {
+            _cardSurface?.Dispose();
+            _cardSurface = BackgroundRenderer.CreateCardSurface(bounds);
+            _cardSurfaceWidth = width;
+            _cardSurfaceHeight = height;
+        }
+
+        if (_cardSurface is null)
+        {
+            return false;
+        }
+
+        _cardBounds = bounds;
+        BackgroundRenderer.ComposeCard(_cardSurface, baseImage, bg, frameGeometry, imageFrame, bounds);
+
+        // Annotations ride on the composed card, clipped to the screenshot's own
+        // rounded rect exactly as the export does.
+        var flat = _cardSurface.Canvas;
+        flat.Save();
+        flat.ClipPath(
+            SkiaGeometry.PerCornerPath(imageFrame, frameGeometry.ImageCornerRadii),
+            antialias: true);
+        flat.Translate((float)imageFrame.X, (float)imageFrame.Y);
+        ScaleToPreviewSpace(flat);
+        DrawAnnotations(flat, baseImage);
+        flat.Restore();
+
+        return true;
+    }
+
+    /// Maps the texture's pixel space onto the rect the image was just drawn
+    /// into, so annotations land on the screenshot instead of drifting off it
+    /// whenever those two sizes disagree.
+    private void ScaleToPreviewSpace(SKCanvas canvas)
+    {
+        if (_previewWidth <= 0 || _previewHeight <= 0)
+        {
+            return;
+        }
+
+        canvas.Scale((float)(_previewDrawWidth / (double)_previewWidth), (float)(_previewDrawHeight / (double)_previewHeight));
+    }
+
+    private void DrawAnnotations(SKCanvas canvas, SKImage source)
+    {
+        var annotations = new List<Annotation>(Model.Annotations);
+        if (_draft is not null)
+        {
+            annotations.Add(_draft);
+        }
+
+        AnnotationRenderer.Draw(canvas, source, annotations, _previewWidth, _previewHeight);
+    }
+
+    /// Device-pixel bounds the card occupies once the camera is applied. A
+    /// homography maps a convex quad to the convex hull of its mapped corners,
+    /// so the four corners bound the projected card exactly.
+    private static RectD ProjectedBounds(RectD imageFrame, CameraProjection projection)
+    {
+        var points = new[]
+        {
+            projection.Project(new PointD(imageFrame.MinX, imageFrame.MinY)),
+            projection.Project(new PointD(imageFrame.MaxX, imageFrame.MinY)),
+            projection.Project(new PointD(imageFrame.MaxX, imageFrame.MaxY)),
+            projection.Project(new PointD(imageFrame.MinX, imageFrame.MaxY)),
+        };
+
+        double minX = points.Min(p => p.X);
+        double minY = points.Min(p => p.Y);
+        double maxX = points.Max(p => p.X);
+        double maxY = points.Max(p => p.Y);
+        return new RectD(minX, minY, maxX - minX, maxY - minY);
     }
 
     private void EnsureLayoutFull()
@@ -1075,6 +1182,16 @@ internal sealed class AnnotationCanvas : SKElement
         }
     }
 
+    /// Texture dimensions step in fixed increments so a continuous control -
+    /// a camera slider, the wheel - doesn't re-resample the full-resolution
+    /// capture on every frame it passes through. Overshooting the ladder only
+    /// ever means a slightly larger texture being scaled down, which is
+    /// invisible; rebuilding per frame is not, and is what makes a drag judder.
+    private const int TextureStep = 64;
+
+    private static int QuantizeTextureSize(int value) =>
+        Math.Max(TextureStep, (int)Math.Ceiling(Math.Max(value, 1) / (double)TextureStep) * TextureStep);
+
     private void UpdateDpiRatio(int canvasW, int canvasH)
     {
         if (ActualWidth > 0 && ActualHeight > 0)
@@ -1231,6 +1348,8 @@ internal sealed class AnnotationCanvas : SKElement
         _previewBitmap = null;
         _blurredPreview?.Dispose();
         _blurredPreview = null;
+        _cardSurface?.Dispose();
+        _cardSurface = null;
         _fullBitmap?.Dispose();
         _fullBitmap = null;
     }

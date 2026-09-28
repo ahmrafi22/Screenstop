@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="Screenstop gradient mark">
+  <defs>
+    <linearGradient id="ink" gradientUnits="userSpaceOnUse" x1="0" y1="96" x2="0" y2="416">
+      <stop offset="0" stop-color="#8FA863"/>
+      <stop offset="0.5" stop-color="#C3CD84"/>
+      <stop offset="1" stop-color="#F2EDCC"/>
+    </linearGradient>
+  </defs>
+  <path d="M202 120H120V202 M310 120H392V202 M120 310V392H202 M392 310V392H310"
+        fill="none" stroke="url(#ink)" stroke-width="24" stroke-linecap="butt"
+        stroke-linejoin="miter" stroke-miterlimit="10"/>
+</svg>

@@ -12,10 +12,22 @@ $root = Split-Path -Parent $PSScriptRoot
 
 # 1. Publish the app (framework-dependent; the .NET 8 Desktop Runtime is a
 #    prerequisite, same as running the app from source).
+#    `dotnet publish -o` does not clean its target, so a previous build's output
+#    survives - and the installer globs dist\*, so a stale assembly (e.g. one
+#    left over from before the rename) would ship next to the new ones. Wipe
+#    the directory first.
+if (Test-Path "$PSScriptRoot\dist") {
+    Remove-Item -Recurse -Force "$PSScriptRoot\dist"
+}
+
 Write-Host "Publishing Screenstop ($Configuration, win-x64)..." -ForegroundColor Cyan
 dotnet publish "$root\src\Screenstop.App" -c $Configuration -r win-x64 `
     --self-contained false -o "$PSScriptRoot\dist"
 if ($LASTEXITCODE -ne 0) { throw "dotnet publish failed" }
+
+# Fail loudly rather than shipping a mixed set of binaries.
+$stale = Get-ChildItem "$PSScriptRoot\dist" -Filter "Screendrop.*" -ErrorAction SilentlyContinue
+if ($stale) { throw "stale pre-rename assemblies in dist: $($stale.Name -join ', ')" }
 
 # 2. Locate ISCC (per-user winget install first, then Program Files).
 $iscc = @(

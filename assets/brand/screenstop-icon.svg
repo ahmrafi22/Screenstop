@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="Screenstop icon">
+  <defs>
+    <linearGradient id="ground" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#26483D"/>
+      <stop offset="0.42" stop-color="#26483D"/>
+      <stop offset="0.72" stop-color="#8FA863"/>
+      <stop offset="1" stop-color="#F2EDCC"/>
+    </linearGradient>
+    <radialGradient id="vignette" cx="0.5" cy="0.46" r="0.72">
+      <stop offset="0.45" stop-color="#14261F" stop-opacity="0"/>
+      <stop offset="1" stop-color="#14261F" stop-opacity="0.34"/>
+    </radialGradient>
+    <filter id="lift" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="3" stdDeviation="5" flood-color="#14261F" flood-opacity="0.5"/>
+    </filter>
+  </defs>
+  <rect width="512" height="512" rx="96" fill="url(#ground)"/>
+  <rect width="512" height="512" rx="96" fill="url(#vignette)"/>
+  <path d="M212 128H128V212 M300 128H384V212 M128 300V384H212 M384 300V384H300"
+        fill="none" stroke="#FFFFFF" stroke-width="30" stroke-linecap="butt"
+        stroke-linejoin="miter" stroke-miterlimit="10" filter="url(#lift)"/>
+</svg>

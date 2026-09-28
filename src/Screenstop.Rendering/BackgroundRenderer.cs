@@ -55,11 +55,7 @@ public static class BackgroundRenderer
         {
             if (settings.Camera.HasEffect)
             {
-                using var foreground = DrawForeground(
-                    displayedContent, settings, frameGeometry, imageRect, width, height);
-                var projection = CameraGeometry.Projection(
-                    canvasRect, imageRect, canvasRect.Size(), settings.Camera);
-                DrawProjectedForeground(canvas, foreground, projection);
+                DrawProjectedCard(canvas, displayedContent, settings, frameGeometry, imageRect, canvasRect);
             }
             else
             {
@@ -226,7 +222,12 @@ public static class BackgroundRenderer
 
     // Decoded wallpapers are cached (keyed by path + write time) so the live
     // editor preview doesn't re-decode on every redraw while dragging sliders.
+    // The editor paints on the UI thread while an export can be composing on
+    // another, and an unsynchronised Dictionary corrupts its own buckets under
+    // concurrent writes - which surfaces as an AccessViolationException in
+    // unrelated code rather than as an obvious failure here.
     private const int WallpaperCacheLimit = 6;
+    private static readonly object WallpaperCacheGate = new();
     private static readonly Dictionary<string, (DateTime WriteTime, SKBitmap Bitmap)> WallpaperCache = new();
 
     private static SKBitmap? AcquireWallpaper(string path)
@@ -234,32 +235,31 @@ public static class BackgroundRenderer
         DateTime writeTime = File.GetLastWriteTimeUtc(path);
         string key = Path.GetFullPath(path);
 
-        if (WallpaperCache.TryGetValue(key, out var cached))
+        lock (WallpaperCacheGate)
         {
-            if (cached.WriteTime == writeTime)
+            if (WallpaperCache.TryGetValue(key, out var cached) && cached.WriteTime == writeTime)
             {
                 return cached.Bitmap;
             }
 
-            cached.Bitmap.Dispose();
-            WallpaperCache.Remove(key);
-        }
+            var bitmap = SKBitmap.Decode(path);
+            if (bitmap is null)
+            {
+                return null;
+            }
 
-        var bitmap = SKBitmap.Decode(path);
-        if (bitmap is null)
-        {
-            return null;
-        }
+            WallpaperCache[key] = (writeTime, bitmap);
+            while (WallpaperCache.Count > WallpaperCacheLimit)
+            {
+                // Evicted bitmaps are dropped, never disposed. A reader on
+                // another thread may still be mid-draw on one, and freeing it
+                // out from under them is a use-after-free. SKBitmap's finalizer
+                // reclaims the native memory once nothing references it.
+                WallpaperCache.Remove(WallpaperCache.Keys.First());
+            }
 
-        WallpaperCache[key] = (writeTime, bitmap);
-        while (WallpaperCache.Count > WallpaperCacheLimit)
-        {
-            var oldest = WallpaperCache.Keys.First();
-            WallpaperCache[oldest].Bitmap.Dispose();
-            WallpaperCache.Remove(oldest);
+            return bitmap;
         }
-
-        return bitmap;
     }
 
     private static RectD AspectFillRect(double imageWidth, double imageHeight, RectD fillRect)
@@ -291,37 +291,192 @@ public static class BackgroundRenderer
         });
     }
 
-    private static SKBitmap DrawForeground(
+    /// Stage rect a flat-composed card will occupy, so a caller can size a
+    /// surface for it before composing.
+    public static RectD CardBounds(
+        BackgroundSettings settings, FrameGeometry frameGeometry, RectD canvasRect)
+    {
+        var caster = settings.Border.IsVisible && frameGeometry.BorderWidth > 0
+            ? frameGeometry.CardRect
+            : frameGeometry.ImageRect;
+        return CardSourceBounds(caster, settings, frameGeometry, canvasRect);
+    }
+
+    /// Creates a surface able to hold a card spanning <paramref name="bounds"/>.
+    public static SKSurface? CreateCardSurface(RectD bounds) =>
+        SKSurface.Create(new SKImageInfo(
+            Math.Max(1, (int)Math.Round(bounds.Width)),
+            Math.Max(1, (int)Math.Round(bounds.Height)),
+            SKColorType.Bgra8888,
+            SKAlphaType.Premul));
+
+    /// Composes the card (outer ring, screenshot, and its shadow spill) flat
+    /// into <paramref name="surface"/>, which must have been sized by
+    /// <see cref="CreateCardSurface"/> for the same <paramref name="bounds"/>.
+    ///
+    /// The card is composed flat and only then mapped through a camera, by
+    /// callers that draw it with <see cref="DrawWarpedCard"/>. Composing under
+    /// the perspective matrix instead is what makes a transformed card look
+    /// rough: Skia degrades antialiased clipping and path rendering once a
+    /// matrix is projective, and the screenshot gets resampled at the card's
+    /// local foreshortening rate, smearing the 1px anti-aliased border. Doing
+    /// the shadow here also keeps its blur in a space with no perspective
+    /// matrix, where Skia's mask filter is exact.
+    ///
+    /// The surface is fully overwritten, so a caller can reuse one across frames
+    /// rather than reallocating on every redraw.
+    public static void ComposeCard(
+        SKSurface surface,
+        SKImage content,
+        BackgroundSettings settings,
+        FrameGeometry frameGeometry,
+        RectD imageRect,
+        RectD bounds)
+    {
+        // The canvas belongs to the surface - disposing it would free the same
+        // native object twice. A reused surface still carries last frame's
+        // translate, so the matrix is reset before it is applied again.
+        var flat = surface.Canvas;
+        flat.Save();
+        flat.ResetMatrix();
+        flat.Clear(SKColors.Transparent);
+        flat.Translate((float)-bounds.MinX, (float)-bounds.MinY);
+        DrawFrameBacking(flat, settings, frameGeometry, castsShadow: true);
+        DrawImage(flat, content, imageRect, frameGeometry);
+        flat.Restore();
+    }
+
+    /// Warps only the card (ring, screenshot, and its shadow spill), not the
+    /// whole stage. Composing flat first keeps the screenshot's interior close
+    /// to 1:1, and shrinks the intermediate surface from the whole stage to the
+    /// card alone - a 4K stage no longer allocates a second 4K RGBA buffer.
+    private static void DrawProjectedCard(
+        SKCanvas canvas,
         SKBitmap content,
         BackgroundSettings settings,
         FrameGeometry frameGeometry,
         RectD imageRect,
-        int width,
-        int height)
+        RectD canvasRect)
     {
-        var info = new SKImageInfo(width, height, SKColorType.Bgra8888, SKAlphaType.Premul);
-        var foreground = new SKBitmap(info);
-        using var canvas = new SKCanvas(foreground);
-        canvas.Clear(SKColors.Transparent);
+        var bounds = CardBounds(settings, frameGeometry, canvasRect);
+        using var surface = CreateCardSurface(bounds);
+        if (surface is null)
+        {
+            DrawFrameBacking(canvas, settings, frameGeometry, castsShadow: true);
+            DrawImage(canvas, content, imageRect, frameGeometry);
+            return;
+        }
 
-        DrawFrameBacking(canvas, settings, frameGeometry, castsShadow: true);
-        DrawImage(canvas, content, imageRect, frameGeometry);
-        return foreground;
+        using var contentImage = SKImage.FromBitmap(content);
+        ComposeCard(surface, contentImage, settings, frameGeometry, imageRect, bounds);
+
+        using var image = surface.Snapshot();
+        var projection = CameraGeometry.Projection(
+            bounds, imageRect, canvasRect.Size(), settings.Camera);
+        DrawWarpedCard(canvas, image, bounds, projection);
     }
 
-    private static void DrawProjectedForeground(
-        SKCanvas canvas, SKBitmap foreground, CameraProjection projection)
+    /// Draws a flat-composed card through a camera projection.
+    public static void DrawWarpedCard(
+        SKCanvas canvas, SKImage card, RectD sourceRect, CameraProjection projection)
     {
-        var h = projection.Forward;
-        var matrix = new SKMatrix(
-            (float)h.A, (float)h.B, (float)h.C,
-            (float)h.D, (float)h.E, (float)h.F,
-            (float)h.G, (float)h.H, (float)h.I);
+        if (IsIdentity(projection, sourceRect))
+        {
+            // No transform worth sampling: copy the card across 1:1 so the
+            // screenshot and its border stay bit-exact.
+            canvas.DrawImage(
+                card,
+                (float)sourceRect.MinX,
+                (float)sourceRect.MinY,
+                new SKPaint { FilterQuality = SKFilterQuality.None, IsAntialias = false });
+            return;
+        }
 
+        var matrix = ToSKMatrix(projection.Forward);
         canvas.Save();
         canvas.Concat(ref matrix);
-        canvas.DrawBitmap(foreground, 0, 0, new SKPaint { FilterQuality = SKFilterQuality.High });
+        canvas.DrawImage(card, sourceRect.ToSK(), new SKPaint
+        {
+            FilterQuality = SKFilterQuality.High,
+            IsAntialias = true,
+        });
         canvas.Restore();
+    }
+
+    /// The source rectangle a warped card needs: the caster grown by the
+    /// shadow's spill, snapped to whole pixels so the flat 1:1 screenshot draw
+    /// inside it stays exact. Magnification never widens this - the source is
+    /// the input, the projected quad is the destination - so the card's own
+    /// spill is all that has to be covered.
+    private static RectD CardSourceBounds(
+        RectD caster,
+        BackgroundSettings settings,
+        FrameGeometry frameGeometry,
+        RectD canvasRect)
+    {
+        var radii = settings.Border.IsVisible && frameGeometry.BorderWidth > 0
+            ? frameGeometry.CardCornerRadii
+            : frameGeometry.ImageCornerRadii;
+        double radius = Math.Max(
+            Math.Max(radii.TopLeft, radii.TopRight),
+            Math.Max(radii.BottomLeft, radii.BottomRight));
+
+        var spill = settings.ShadowStyle.Layer(
+            settings.Shadow, Math.Min(caster.Width, caster.Height)) is { } layer
+            ? (layer.Radius * 2.5) + Math.Abs(layer.YOffset)
+            : 0;
+
+        // The blur is soft, so the outermost falloff can end at the surface
+        // edge without a visible seam.
+        var bounds = Intersect(caster.Inset(-(spill + radius + 2), -(spill + radius + 2)), canvasRect);
+
+        double x = Math.Round(bounds.MinX);
+        double y = Math.Round(bounds.MinY);
+        double w = Math.Round(bounds.Width);
+        double h = Math.Round(bounds.Height);
+        if (w <= 0 || h <= 0)
+        {
+            return canvasRect;
+        }
+
+        w = Math.Min(w, canvasRect.MaxX - x);
+        h = Math.Min(h, canvasRect.MaxY - y);
+        if (w <= 0 || h <= 0)
+        {
+            return canvasRect;
+        }
+
+        return new RectD(x, y, w, h);
+    }
+
+    private static bool IsIdentity(CameraProjection projection, RectD sourceRect) =>
+        CornersWithin(projection.Quad.TopLeft, sourceRect, 0.01)
+        && CornersWithin(projection.Quad.TopRight, sourceRect, 0.01)
+        && CornersWithin(projection.Quad.BottomRight, sourceRect, 0.01)
+        && CornersWithin(projection.Quad.BottomLeft, sourceRect, 0.01);
+
+    private static bool CornersWithin(PointD point, RectD rect, double tolerance) =>
+        point.X >= rect.MinX - tolerance
+        && point.X <= rect.MaxX + tolerance
+        && point.Y >= rect.MinY - tolerance
+        && point.Y <= rect.MaxY + tolerance;
+
+    private static RectD Intersect(RectD a, RectD b)
+    {
+        double minX = Math.Max(a.MinX, b.MinX);
+        double minY = Math.Max(a.MinY, b.MinY);
+        double maxX = Math.Min(a.MaxX, b.MaxX);
+        double maxY = Math.Min(a.MaxY, b.MaxY);
+        if (maxX <= minX || maxY <= minY)
+        {
+            return new RectD(
+                (a.MinX + a.MaxX) / 2,
+                (a.MinY + a.MaxY) / 2,
+                0,
+                0);
+        }
+
+        return new RectD(minX, minY, maxX - minX, maxY - minY);
     }
 
     private static void DrawFrameBacking(
@@ -483,10 +638,17 @@ public static class BackgroundRenderer
     private static void DrawImage(
         SKCanvas canvas, SKBitmap image, RectD imageRect, FrameGeometry geometry)
     {
+        using var image2 = SKImage.FromBitmap(image);
+        DrawImage(canvas, image2, imageRect, geometry);
+    }
+
+    private static void DrawImage(
+        SKCanvas canvas, SKImage image, RectD imageRect, FrameGeometry geometry)
+    {
         using var clipPath = SkiaGeometry.PerCornerPath(geometry.ImageRect, geometry.ImageCornerRadii);
         canvas.Save();
         canvas.ClipPath(clipPath, antialias: true);
-        canvas.DrawBitmap(image, imageRect.ToSK(), new SKPaint
+        canvas.DrawImage(image, imageRect.ToSK(), new SKPaint
         {
             FilterQuality = SKFilterQuality.None,
         });
