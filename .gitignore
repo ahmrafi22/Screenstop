@@ -8,3 +8,5 @@ artifacts/
 publish/
 installer/dist/
 installer/Output/
+.agent/
+preview.gif
