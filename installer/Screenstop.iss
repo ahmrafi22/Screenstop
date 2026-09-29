@@ -14,7 +14,7 @@
 #define MyAppVersion "1.1.6"
 #define MyAppPublisher "Screenstop"
 #define MyAppExeName "Screenstop.exe"
-#define MyAppURL "https://github.com/ahmrafi22/Screenstop-Windows"
+#define MyAppURL "https://github.com/ahmrafi22/Screenstop"
 
 [Setup]
 AppId={{8F1E6C2A-9B4D-4A7E-B5C3-D2E6F8A90123}

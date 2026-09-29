@@ -16,13 +16,15 @@
   <img alt="Windows 10 2004+" src="https://img.shields.io/badge/Windows-10%20%2B%20%2F%2011-0078D4?logo=windows&logoColor=white" height="20">
   <img alt=".NET 8" src="https://img.shields.io/badge/.NET-8.0-512BD4?logo=dotnet&logoColor=white" height="20">
   <img alt="x64" src="https://img.shields.io/badge/arch-x64-6E7781" height="20">
-  <a href="https://github.com/ahmrafi22/Screendrop-Windows/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/ahmrafi22/Screendrop-Windows?label=release&color=8FA863" height="20"></a>
-  <a href="https://github.com/ahmrafi22/Screendrop-Windows/commits/main"><img alt="Last commit" src="https://img.shields.io/github/last-commit/ahmrafi22/Screendrop-Windows?color=8FA863" height="20"></a>
 </p>
 
 ---
 
 ## Preview
+
+<p align="center">
+  <img src="preview.gif" alt="Screenstop in action: capturing a region, annotating it, and applying a device mockup" width="820">
+</p>
 
 <p align="center"><sub>Region capture &rarr; annotate &rarr; mockup &rarr; export, end to end.</sub></p>
 
@@ -138,7 +140,7 @@ auto-resolved to a free default.
 ## Install
 
 Grab the latest installer from the
-[releases page](https://github.com/ahmrafi22/Screendrop-Windows/releases).
+[releases page](https://github.com/ahmrafi22/Screenstop/releases).
 
 ```powershell
 # Silent install
@@ -164,8 +166,8 @@ Full instructions, including silent flags and version bumping, live in
 if you want to build the installer.
 
 ```powershell
-git clone https://github.com/ahmrafi22/Screendrop-Windows.git
-cd Screenstop-Windows
+git clone https://github.com/ahmrafi22/Screenstop.git
+cd Screenstop
 
 # restore + build + test
 powershell -ExecutionPolicy Bypass -File .\build.ps1
